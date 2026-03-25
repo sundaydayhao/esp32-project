@@ -1,0 +1,244 @@
+menu "Gas Meter Camera Push Configuration"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "your_wifi_ssid"
+        help
+            SSID used by the device in station mode.
+
+    config WIFI_PASSWORD
+        string "WiFi password"
+        default "your_wifi_password"
+        help
+            WiFi password used by the device in station mode.
+
+    config WIFI_MAX_RETRY
+        int "WiFi max retry count"
+        default 10
+        range 1 20
+        help
+            Maximum reconnection attempts before reporting a failure.
+
+    choice WECHAT_PUSH_METHOD
+        prompt "WeChat push method"
+        default WECHAT_PUSH_WECOM
+        help
+            Select how notifications are sent to WeChat.
+
+        config WECHAT_PUSH_WECOM
+            bool "WeCom webhook"
+            help
+                Use a WeCom group robot webhook to send images.
+
+        config WECHAT_PUSH_SERVERCHAN
+            bool "ServerChan"
+            help
+                Use ServerChan to send text notifications to personal WeChat.
+    endchoice
+
+    config WECOM_WEBHOOK_KEY
+        string "WeCom webhook key"
+        default ""
+        depends on WECHAT_PUSH_WECOM
+        help
+            The key portion of the WeCom webhook URL.
+
+    config SERVERCHAN_SENDKEY
+        string "ServerChan SendKey"
+        default ""
+        depends on WECHAT_PUSH_SERVERCHAN
+        help
+            SendKey used by ServerChan.
+
+    config CAPTURE_INTERVAL_MINUTES
+        int "Capture interval (minutes)"
+        default 60
+        range 1 1440
+        help
+            Period between captures and notification uploads.
+
+    config CAPTURE_INTERVAL_DEBUG_SECONDS
+        int "Debug capture interval override (seconds, 0 disables)"
+        default 0
+        range 0 3600
+        help
+            Overrides the normal capture interval during debugging. Set to 0
+            to keep using the minute-based interval above.
+
+    config CAMERA_FRAME_SIZE
+        int "Camera frame size"
+        default 5
+        range 0 13
+        help
+            0=96x96, 1=QQVGA, 2=QCIF, 3=HQVGA, 4=240x240,
+            5=QVGA, 6=CIF, 7=HVGA, 8=VGA, 9=SVGA, 10=XGA,
+            11=HD, 12=SXGA, 13=UXGA.
+            These values follow this project's compatibility mapping and are
+            translated to the current esp32-camera enum at runtime.
+
+    config CAMERA_JPEG_QUALITY
+        int "JPEG quality"
+        default 12
+        range 4 63
+        help
+            Lower values mean higher quality and larger images.
+
+    menu "Flash LED"
+
+        config FLASH_LED_ENABLE
+            bool "Enable flash LED during capture"
+            default y if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default n
+            help
+                Turns on the ESP32-CAM onboard flash LED only while capturing.
+
+        config FLASH_LED_PIN
+            int "Flash LED pin"
+            default 4 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 4
+            depends on FLASH_LED_ENABLE
+            help
+                AI-Thinker ESP32-CAM typically uses GPIO4 for the white flash LED.
+
+        config FLASH_LED_ACTIVE_HIGH
+            bool "Flash LED active high"
+            default y
+            depends on FLASH_LED_ENABLE
+            help
+                Enable if the LED turns on when the GPIO output is high.
+
+        config FLASH_LED_PRECAPTURE_MS
+            int "Flash LED pre-capture delay (ms)"
+            default 120
+            range 0 2000
+            depends on FLASH_LED_ENABLE
+            help
+                Time to keep the flash on before calling the camera capture API.
+
+        config FLASH_LED_SETTLE_FRAMES
+            int "Flash LED settle frames"
+            default 2
+            range 0 5
+            depends on FLASH_LED_ENABLE
+            help
+                Number of warmup frames to discard after the flash turns on so
+                auto white balance and auto exposure can settle.
+
+        config FLASH_LED_SETTLE_DELAY_MS
+            int "Flash LED settle delay between warmup frames (ms)"
+            default 80
+            range 0 1000
+            depends on FLASH_LED_ENABLE
+            help
+                Delay between discarded warmup frames while the flash is on.
+
+        config FLASH_LED_POSTCAPTURE_MS
+            int "Flash LED post-capture hold (ms)"
+            default 0
+            range 0 1000
+            depends on FLASH_LED_ENABLE
+            help
+                Optional time to hold the flash on after capture completes.
+
+    endmenu
+
+    choice CAMERA_BOARD_PROFILE
+        prompt "Camera board profile"
+        default CAMERA_BOARD_AI_THINKER_ESP32_CAM
+        help
+            Pick a preset for common camera boards, or choose Custom and edit
+            the camera pins below.
+
+        config CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            bool "AI-Thinker ESP32-CAM / ESP32-CAM"
+
+        config CAMERA_BOARD_CUSTOM
+            bool "Custom"
+    endchoice
+
+    menu "Camera pin configuration"
+
+        comment "Board profile selects defaults; values below remain editable."
+
+        config CAM_PIN_PWDN
+            int "PWDN pin (-1 if unused)"
+            default 32 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 32
+
+        config CAM_PIN_RESET
+            int "RESET pin (-1 if unused)"
+            default -1
+
+        config CAM_PIN_XCLK
+            int "XCLK pin"
+            default 0 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 0
+
+        config CAM_PIN_SIOD
+            int "SIOD / SDA pin"
+            default 26 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 26
+
+        config CAM_PIN_SIOC
+            int "SIOC / SCL pin"
+            default 27 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 27
+
+        config CAM_PIN_D7
+            int "D7 pin"
+            default 35 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 35
+
+        config CAM_PIN_D6
+            int "D6 pin"
+            default 34 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 34
+
+        config CAM_PIN_D5
+            int "D5 pin"
+            default 39 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 39
+
+        config CAM_PIN_D4
+            int "D4 pin"
+            default 36 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 36
+
+        config CAM_PIN_D3
+            int "D3 pin"
+            default 21 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 21
+
+        config CAM_PIN_D2
+            int "D2 pin"
+            default 19 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 19
+
+        config CAM_PIN_D1
+            int "D1 pin"
+            default 18 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 18
+
+        config CAM_PIN_D0
+            int "D0 pin"
+            default 5 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 5
+
+        config CAM_PIN_VSYNC
+            int "VSYNC pin"
+            default 25 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 25
+
+        config CAM_PIN_HREF
+            int "HREF pin"
+            default 23 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 23
+
+        config CAM_PIN_PCLK
+            int "PCLK pin"
+            default 22 if CAMERA_BOARD_AI_THINKER_ESP32_CAM
+            default 22
+
+    endmenu
+
+endmenu

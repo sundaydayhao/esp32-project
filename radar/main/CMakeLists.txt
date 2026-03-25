@@ -1,0 +1,13 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "wifi_ap.c"
+        "web_server.c"
+        "servo.c"
+        "ultrasonic.c"
+        "radar.c"
+    INCLUDE_DIRS
+        "."
+    EMBED_FILES
+        "radar_page.html"
+)

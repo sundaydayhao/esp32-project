@@ -1,0 +1,4 @@
+{
+    "idf.currentSetup": "D:/Espressif/frameworks/esp-idf-v5.5.3/",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json"
+}

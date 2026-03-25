@@ -1,0 +1,21 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "camera_init.c"
+        "flash_led.c"
+        "wifi_connect.c"
+        "wechat_sender.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp_event
+        esp_http_client
+        esp_netif
+        esp_timer
+        esp-tls
+        esp_wifi
+        freertos
+        mbedtls
+        nvs_flash
+        esp_psram
+)

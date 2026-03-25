@@ -1,0 +1,8 @@
+## IDF 组件依赖配置
+dependencies:
+  ## ESP32 摄像头驱动 (支持 OV2640, OV5640 等)
+  espressif/esp32-camera:
+    version: "^2.0.9"
+  ## IDF 版本要求
+  idf:
+    version: ">=5.0.0"

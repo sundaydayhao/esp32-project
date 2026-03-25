@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "main.cc"
+        "micro_speech_model.cc"
+        "audio_preprocessor_model.cc"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp-tflite-micro
+)

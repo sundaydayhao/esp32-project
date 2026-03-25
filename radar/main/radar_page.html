@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32-S3 超声波雷达</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      padding: 16px 8px 24px;
+      font-family: 'Courier New', Courier, monospace;
+      color: #00ff41;
+      overflow-x: hidden;
+    }
+
+    /* ---- Title ---- */
+    h1 {
+      font-size: clamp(16px, 4vw, 26px);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-shadow: 0 0 12px #00ff41, 0 0 24px #00aa30;
+      margin-bottom: 10px;
+    }
+
+    /* ---- Status badge ---- */
+    #status {
+      font-size: 13px;
+      padding: 4px 18px;
+      border-radius: 3px;
+      border: 1px solid currentColor;
+      margin-bottom: 12px;
+      transition: color 0.3s, border-color 0.3s;
+    }
+    #status.connected    { color: #00ff41; }
+    #status.disconnected { color: #ff4444; }
+
+    /* ---- Canvas wrapper ---- */
+    /* Canvas is 520x300; let CSS scale it responsively */
+    #canvas-wrap {
+      position: relative;
+      width: min(96vw, 520px);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    /* ---- Info bar ---- */
+    #info-bar {
+      display: flex;
+      gap: 32px;
+      margin-top: 14px;
+    }
+    .info-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .info-label {
+      font-size: 10px;
+      color: #006622;
+      letter-spacing: 2px;
+    }
+    .info-value {
+      font-size: 22px;
+      color: #00ff41;
+      text-shadow: 0 0 8px #00ff41;
+      min-width: 90px;
+      text-align: center;
+    }
+
+    /* ---- Legend ---- */
+    #legend {
+      margin-top: 14px;
+      font-size: 11px;
+      color: #005520;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>&#9632; ESP32-S3 RADAR &#9632;</h1>
+  <div id="status" class="disconnected">&#9679; DISCONNECTED</div>
+
+  <div id="canvas-wrap">
+    <!-- 520 wide × 300 tall: semicircle with R=230, centre at (260,278) -->
+    <canvas id="radar" width="520" height="300"></canvas>
+  </div>
+
+  <div id="info-bar">
+    <div class="info-cell">
+      <span class="info-label">ANGLE</span>
+      <span class="info-value" id="val-angle">---&deg;</span>
+    </div>
+    <div class="info-cell">
+      <span class="info-label">DISTANCE</span>
+      <span class="info-value" id="val-dist">--- cm</span>
+    </div>
+    <div class="info-cell">
+      <span class="info-label">DIRECTION</span>
+      <span class="info-value" id="val-dir">---</span>
+    </div>
+  </div>
+
+  <div id="legend">MAX RANGE: 100 cm &nbsp;|&nbsp; STEP: 2&deg;</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============================================================
+     Canvas setup
+     Canvas: 520 x 300 px
+     Semicircle centre at (CX, CY) = (260, 278)
+     Outer radius R = 230  →  left edge x=30, right edge x=490, top y=48
+  ============================================================ */
+  const canvas = document.getElementById("radar");
+  const ctx    = canvas.getContext("2d");
+
+  const W        = 520;
+  const H        = 300;
+  const CX       = 260;   // centre x
+  const CY       = 278;   // centre y (near bottom)
+  const R        = 230;   // outer radius
+  const MAX_DIST = 100;   // cm
+
+  /* ============================================================
+     State
+  ============================================================ */
+  // scanPoints[angle] = { dist, ts }   angle 0..180
+  const scanPoints = new Array(181).fill(null);
+  let   currentAngle = 0;
+  let   sweepDir     = 1;    // +1 sweeping right, -1 sweeping left
+  const FADE_MS      = 8000; // ms until a point fully fades
+
+  /* ============================================================
+     Coordinate helpers
+  ============================================================ */
+  /**
+   * Convert servo angle (0-180°) + distance (cm) to canvas (x, y).
+   *   servo 0°   → right (CX + r, CY)
+   *   servo 90°  → top   (CX,     CY - r)
+   *   servo 180° → left  (CX - r, CY)
+   */
+  function toXY(angleDeg, distCm) {
+    const r   = R * Math.min(distCm, MAX_DIST) / MAX_DIST;
+    const rad = angleDeg * Math.PI / 180;
+    return {
+      x: CX + r * Math.cos(rad),
+      y: CY - r * Math.sin(rad)
+    };
+  }
+
+  /**
+   * Return the canvas arc angle (radians) for a given servo angle.
+   * Canvas: 0 = right, angles increase clockwise (y-down).
+   * Servo 0° maps to canvas right = 0
+   * Servo 90° maps to canvas top  = -π/2
+   * Servo 180° maps to canvas left = -π
+   */
+  function canvasRad(angleDeg) {
+    return -angleDeg * Math.PI / 180;
+  }
+
+  /* ============================================================
+     Drawing
+  ============================================================ */
+  function drawBackground() {
+    ctx.fillStyle = "#000d00";
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawGrid() {
+    const rings = 4;
+
+    for (let i = 1; i <= rings; i++) {
+      const r = R * i / rings;
+
+      // Upper-semicircle arc
+      // ctx.arc anticlockwise=true from π to 0 goes through -π/2 (top) ✓
+      ctx.beginPath();
+      ctx.arc(CX, CY, r, Math.PI, 0, true);
+      ctx.strokeStyle = "rgba(0,100,0,0.55)";
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+
+      // Distance label (just right of the 90° spoke)
+      const label = (MAX_DIST * i / rings) + " cm";
+      ctx.fillStyle    = "rgba(0,150,0,0.75)";
+      ctx.font         = "10px 'Courier New'";
+      ctx.textAlign    = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(label, CX + 4, CY - r + 1);
+    }
+
+    // Angle spokes every 30°
+    for (let a = 0; a <= 180; a += 30) {
+      const rad = a * Math.PI / 180;
+      const ex  = CX + R * Math.cos(rad);
+      const ey  = CY - R * Math.sin(rad);
+
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.lineTo(ex, ey);
+      ctx.strokeStyle = "rgba(0,80,0,0.5)";
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+
+      // Angle label just outside the outer ring
+      const labelR = R + 14;
+      const lx = CX + labelR * Math.cos(rad);
+      const ly = CY - labelR * Math.sin(rad);
+      ctx.fillStyle    = "rgba(0,160,0,0.85)";
+      ctx.font         = "10px 'Courier New'";
+      ctx.textAlign    = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(a + "\u00b0", lx, ly);
+    }
+
+    // Baseline (flat edge of semicircle)
+    ctx.beginPath();
+    ctx.moveTo(CX - R, CY);
+    ctx.lineTo(CX + R, CY);
+    ctx.strokeStyle = "rgba(0,120,0,0.7)";
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+
+    ctx.textAlign    = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+
+  function drawSweep() {
+    const rad = currentAngle * Math.PI / 180;
+    const ex  = CX + R * Math.cos(rad);
+    const ey  = CY - R * Math.sin(rad);
+
+    // ---- Trailing glow sector ----
+    // The trail is the 25° sector behind the sweep line.
+    // In canvas coords, going clockwise (anticlockwise=false) from a
+    // more-negative angle to a less-negative angle traverses the upper
+    // semicircle correctly.
+    const trailDeg = 25;
+    let trailLo, trailHi;
+    if (sweepDir >= 0) {
+      // sweeping right: trail is to the left (smaller servo angles)
+      trailLo = Math.max(0,   currentAngle - trailDeg);
+      trailHi = currentAngle;
+    } else {
+      // sweeping left: trail is to the right (larger servo angles)
+      trailLo = currentAngle;
+      trailHi = Math.min(180, currentAngle + trailDeg);
+    }
+    // canvasRad(trailLo) <= canvasRad(trailHi)  (both negative, Lo more negative)
+    const cLo = canvasRad(trailLo);
+    const cHi = canvasRad(trailHi);
+
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.arc(CX, CY, R, cLo, cHi, false);  // clockwise → upper semicircle
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0,255,65,0.07)";
+    ctx.fill();
+
+    // ---- Main sweep line ----
+    const grad = ctx.createLinearGradient(CX, CY, ex, ey);
+    grad.addColorStop(0,   "rgba(0,255,65,0.95)");
+    grad.addColorStop(0.5, "rgba(0,255,65,0.45)");
+    grad.addColorStop(1,   "rgba(0,255,65,0.0)");
+
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth   = 2.5;
+    ctx.stroke();
+
+    // Centre dot
+    ctx.beginPath();
+    ctx.arc(CX, CY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#00ff41";
+    ctx.fill();
+  }
+
+  function drawPoints() {
+    const now = Date.now();
+
+    for (let a = 0; a <= 180; a++) {
+      const pt = scanPoints[a];
+      if (!pt || pt.dist === 0) continue;
+
+      const age = now - pt.ts;
+      if (age > FADE_MS) continue;
+
+      const opacity = 1 - age / FADE_MS;
+      const pos     = toXY(a, pt.dist);
+
+      // Outer glow
+      const grd = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 10);
+      grd.addColorStop(0,   "rgba(0,255,65," + (opacity * 0.85).toFixed(3) + ")");
+      grd.addColorStop(0.5, "rgba(0,200,50," + (opacity * 0.30).toFixed(3) + ")");
+      grd.addColorStop(1,   "rgba(0,255,65,0)");
+
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+
+      // Core dot
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,255,65," + opacity.toFixed(3) + ")";
+      ctx.fill();
+    }
+  }
+
+  function drawFrame() {
+    drawBackground();
+    drawGrid();
+    drawSweep();
+    drawPoints();
+  }
+
+  /* ============================================================
+     Animation loop
+  ============================================================ */
+  function loop() {
+    drawFrame();
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+  /* ============================================================
+     WebSocket
+  ============================================================ */
+  const statusEl = document.getElementById("status");
+  const valAngle = document.getElementById("val-angle");
+  const valDist  = document.getElementById("val-dist");
+  const valDir   = document.getElementById("val-dir");
+
+  let ws           = null;
+  let reconnectTmr = null;
+
+  function connect() {
+    const url = "ws://" + location.host + "/ws";
+    ws = new WebSocket(url);
+
+    ws.onopen = function () {
+      statusEl.textContent = "\u25cf CONNECTED";
+      statusEl.className   = "connected";
+      valDir.textContent   = "SCANNING";
+    };
+
+    ws.onclose = function () {
+      statusEl.textContent = "\u25cf DISCONNECTED";
+      statusEl.className   = "disconnected";
+      valDir.textContent   = "OFFLINE";
+      clearTimeout(reconnectTmr);
+      reconnectTmr = setTimeout(connect, 3000);
+    };
+
+    ws.onerror = function () {
+      ws.close();
+    };
+
+    ws.onmessage = function (evt) {
+      var data;
+      try { data = JSON.parse(evt.data); } catch (e) { return; }
+
+      var angle = parseInt(data.a,   10);
+      var dist  = parseInt(data.d,   10);
+      var dir   = parseInt(data.dir, 10);
+
+      if (isNaN(angle) || isNaN(dist)) return;
+
+      // Update state
+      scanPoints[angle] = { dist: dist, ts: Date.now() };
+      currentAngle      = angle;
+      sweepDir          = isNaN(dir) ? 1 : dir;
+
+      // Update info bar (textContent does NOT parse HTML entities)
+      valAngle.textContent = angle + "\u00b0";
+      valDist.textContent  = dist >= MAX_DIST ? ">100 cm" : dist + " cm";
+      valDir.textContent   = dir > 0 ? "\u25c0 LEFT" : "RIGHT \u25b6";
+    };
+  }
+
+  connect();
+})();
+</script>
+</body>
+</html>

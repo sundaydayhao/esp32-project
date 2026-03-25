@@ -1,0 +1,26 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "wifi/wifi_manager.c"
+        "display/lcd_driver.c"
+        "display/display_manager.c"
+        "storage/content_store.c"
+        "web/web_server.c"
+    INCLUDE_DIRS
+        "."
+        "wifi"
+        "display"
+        "storage"
+        "web"
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_http_server
+        mdns
+        driver
+        esp_timer
+        spiffs
+        fatfs
+        json
+        esp_psram
+)

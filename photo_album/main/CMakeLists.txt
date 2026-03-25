@@ -1,0 +1,31 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "board/ch422g_ctrl.c"
+        "lcd/lcd_driver.c"
+        "sd/sd_card.c"
+        "sd/photo_scanner.c"
+        "decoder/jpeg_decoder.c"
+        "decoder/bmp_decoder.c"
+        "slideshow/slideshow.c"
+    INCLUDE_DIRS
+        "."
+        "lcd"
+        "sd"
+        "decoder"
+        "slideshow"
+    REQUIRES
+        esp_lcd
+        esp_driver_gpio
+        esp_driver_spi
+        esp_driver_i2c
+        esp_driver_ledc
+        fatfs
+        sdmmc
+        esp_jpeg
+        nvs_flash
+        esp_timer
+        freertos
+        log
+        heap
+)

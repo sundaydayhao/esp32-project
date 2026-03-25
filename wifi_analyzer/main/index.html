@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WiFi 信号分析仪</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 16px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #58a6ff;
+      font-size: 20px;
+      margin-bottom: 6px;
+    }
+
+    .status {
+      text-align: center;
+      color: #8b949e;
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      color: #58a6ff;
+      font-size: 13px;
+      margin: 16px 0 6px;
+      border-bottom: 1px solid #30363d;
+      padding-bottom: 4px;
+    }
+
+    /* ── 网络列表 ── */
+    .network {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 9px 12px;
+      margin: 5px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .network:hover { border-color: #58a6ff; }
+
+    .lock   { font-size: 13px; width: 16px; }
+    .ssid   { flex: 1; font-weight: 600; font-size: 13px;
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hidden { color: #8b949e; font-style: italic; }
+
+    .bar-wrap { width: 72px; height: 7px; background: #21262d;
+                border-radius: 4px; overflow: hidden; }
+    .bar      { height: 100%; border-radius: 4px; transition: width 0.4s; }
+
+    .rssi { width: 68px; text-align: right; font-size: 12px; font-family: monospace; }
+    .ch   { width: 40px; text-align: center; background: #21262d;
+            border-radius: 4px; padding: 2px 3px; font-size: 11px; color: #8b949e; }
+
+    /* ── 信道占用图 ── */
+    .ch-chart { display: flex; align-items: flex-end; height: 56px; gap: 2px; padding: 0 2px; }
+    .ch-col   { display: flex; flex-direction: column; align-items: center; flex: 1; }
+    .ch-bar-wrap  { width: 100%; display: flex; align-items: flex-end; height: 44px; }
+    .ch-bar-inner { width: 100%; border-radius: 2px 2px 0 0; min-height: 2px; transition: height 0.4s; }
+    .ch-label { font-size: 9px; color: #8b949e; margin-top: 2px; }
+
+    /* ── 刷新按钮 ── */
+    .refresh-btn {
+      display: block; width: 100%; padding: 9px;
+      background: #21262d; border: 1px solid #30363d;
+      border-radius: 8px; color: #58a6ff;
+      font-size: 13px; cursor: pointer;
+      margin-top: 14px; text-align: center;
+    }
+    .refresh-btn:hover { background: #30363d; }
+  </style>
+</head>
+<body>
+
+  <h1>&#128225; WiFi 信号分析仪</h1>
+  <div class="status" id="status">正在加载...</div>
+
+  <div class="section-title">&#128246; 信号列表（按强度排序）</div>
+  <div id="network-list"></div>
+
+  <div class="section-title">&#128202; 2.4G 信道占用图</div>
+  <div class="ch-chart" id="ch-chart"></div>
+
+  <button class="refresh-btn" onclick="loadData()">&#128260; 立即刷新</button>
+
+  <script>
+    /* ── 工具函数 ── */
+    function rssiToPercent(rssi) {
+      if (rssi >= -50)  return 100;
+      if (rssi <= -100) return 0;
+      return 2 * (rssi + 100);
+    }
+
+    function rssiColor(rssi) {
+      if (rssi >= -60) return '#3fb950';   /* 绿：强 */
+      if (rssi >= -75) return '#d29922';   /* 黄：中 */
+      return '#f85149';                    /* 红：弱 */
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g, '&amp;')
+               .replace(/</g, '&lt;')
+               .replace(/>/g, '&gt;')
+               .replace(/"/g, '&quot;');
+    }
+
+    /* ── 渲染网络列表 ── */
+    function renderList(networks) {
+      const sorted = [...networks].sort((a, b) => b.rssi - a.rssi);
+      document.getElementById('network-list').innerHTML = sorted.map(n => {
+        const pct   = rssiToPercent(n.rssi);
+        const color = rssiColor(n.rssi);
+        const ssidHtml = n.ssid
+          ? `<span class="ssid">${escHtml(n.ssid)}</span>`
+          : `<span class="ssid hidden">&lt;隐藏网络&gt;</span>`;
+        return `
+          <div class="network">
+            <span class="lock">${n.open ? '&#128275;' : '&#128274;'}</span>
+            ${ssidHtml}
+            <div class="bar-wrap">
+              <div class="bar" style="width:${pct}%; background:${color}"></div>
+            </div>
+            <span class="rssi" style="color:${color}">${n.rssi} dBm</span>
+            <span class="ch">CH ${n.channel}</span>
+          </div>`;
+      }).join('');
+    }
+
+    /* ── 渲染信道占用图 ── */
+    function renderChannelChart(networks) {
+      /* 统计每个信道的网络数量和最强信号 */
+      const chData = {};
+      for (let i = 1; i <= 13; i++) chData[i] = { count: 0, maxRssi: -100 };
+      networks.forEach(n => {
+        if (n.channel >= 1 && n.channel <= 13) {
+          chData[n.channel].count++;
+          if (n.rssi > chData[n.channel].maxRssi) chData[n.channel].maxRssi = n.rssi;
+        }
+      });
+
+      const maxCount = Math.max(...Object.values(chData).map(d => d.count), 1);
+      const recommended = [1, 6, 11]; /* 互不重叠的推荐信道 */
+
+      document.getElementById('ch-chart').innerHTML = Object.entries(chData).map(([ch, d]) => {
+        const h     = d.count > 0 ? Math.max(3, Math.round(d.count / maxCount * 40)) : 0;
+        const color = d.count > 0 ? rssiColor(d.maxRssi) : '#21262d';
+        const isRec = recommended.includes(Number(ch));
+        return `
+          <div class="ch-col">
+            <div class="ch-bar-wrap">
+              <div class="ch-bar-inner"
+                   style="height:${h}px; background:${color};
+                          ${isRec ? 'box-shadow:0 0 4px ' + color : ''}">
+              </div>
+            </div>
+            <div class="ch-label" style="color:${isRec ? '#58a6ff' : '#8b949e'}">${ch}</div>
+          </div>`;
+      }).join('');
+    }
+
+    /* ── 主加载函数 ── */
+    async function loadData() {
+      document.getElementById('status').textContent = '扫描中...';
+      try {
+        const resp = await fetch('/api/scan');
+        const data = await resp.json();
+        renderList(data.networks);
+        renderChannelChart(data.networks);
+        const time = new Date().toLocaleTimeString('zh-CN');
+        document.getElementById('status').textContent =
+          `发现 ${data.networks.length} 个网络 · 更新于 ${time}`;
+      } catch (e) {
+        document.getElementById('status').textContent = '获取数据失败，请重试';
+        console.error(e);
+      }
+    }
+
+    /* 页面加载后立即获取，之后每 10 秒自动刷新 */
+    loadData();
+    setInterval(loadData, 10000);
+  </script>
+
+</body>
+</html>

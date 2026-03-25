@@ -1,0 +1,136 @@
+
+
+你是一个资深软件架构/静态分析专家，同时也是技术写作专家。你的任务是在“当前工作目录（repo root）”对全部 C/C++/Python 源码进行静态逻辑分析，输出一套可读、可维护、可复用的设计文档，并生成函数调用关系图与模块依赖图。
+
+# 0) 总目标（必须交付）
+A. 生成设计文档（Markdown），覆盖：架构概览、模块职责、关键数据结构、关键流程、关键 API、边界条件、风险与验证策略。
+B. 生成函数调用关系图（call graph）：
+   - C/C++：尽可能基于 Doxygen+Graphviz 或 clang 工具链生成（优先真实 call graph；若不全支持 function pointer，要明确限制）。
+   - Python：基于静态解析生成调用图（如 pyan/pydeps），并输出 Graphviz DOT + SVG/PNG。
+C. 生成模块/文件级依赖图：
+   - include/import 关系图（目录级、模块级）
+D. 所有输出放到 ./docs 目录，图放 ./docs/diagrams 目录，并给出索引文件 ./docs/README.md 指向各产物。
+
+# 1) 约束（非常重要）
+- 只做“读取/分析/生成文档与图”，禁止修改业务源码逻辑（除非是添加纯文档/配置到 docs）。
+- 不要输出任何密钥/Token/密码；如果扫描到疑似敏感信息，只在报告中用“已检测到疑似敏感信息（位置+类型）”描述，不要打印原文。
+- 不要把 build/venv/node_modules/.git/输出目录纳入分析（需要忽略）。
+- 任何推断都要标注“依据”（代码文件/函数名/行号范围）。不确定的地方要显式写出“不确定/需进一步确认”。
+
+# 2) 执行步骤（按顺序做，必须落地）
+## Step 2.1 代码盘点（Inventory）
+- 扫描当前目录，列出：
+  - 语言与文件数（.c/.cpp/.h/.py）
+  - 主要子目录（按代码密度排序）
+  - 入口文件/入口函数候选（main、CLI entry、服务启动、pytest入口等）
+- 输出到：./docs/00_inventory.md
+
+建议命令（可选）：
+- find . -type f \( -name '*.c' -o -name '*.cpp' -o -name '*.h' -o -name '*.py' \) | wc -l
+- tree -L 3
+- rg -n "int\\s+main\\s*\\(" .
+- rg -n "if __name__ == '__main__'" .
+
+## Step 2.2 架构理解（Architecture）
+- 识别“模块边界”（按目录/命名空间/import层次）
+- 输出一张“模块关系图”（Mermaid 或 Graphviz）
+- 输出到：./docs/01_architecture.md
+
+内容至少包含：
+- 模块列表（每个模块：职责、输入输出、依赖）
+- 关键数据流（从入口到核心处理）
+- 关键控制流（初始化、运行、退出/清理）
+
+## Step 2.3 函数调用图（Call Graph）
+### C/C++（优先 Doxygen + Graphviz）
+1) 检查系统是否有 doxygen 与 dot：
+   - which doxygen && which dot
+2) 若存在，则在 repo root 创建 docs/Doxyfile（或临时 Doxyfile），配置：
+   - INPUT = <你的源码目录列表>
+   - FILE_PATTERNS = *.c *.cpp *.h
+   - RECURSIVE = YES
+   - HAVE_DOT = YES
+   - CALL_GRAPH = YES
+   - CALLER_GRAPH = YES
+   - INCLUDE_GRAPH = YES
+   - INCLUDED_BY_GRAPH = YES
+   - DIRECTORY_GRAPH = YES
+   - DOT_IMAGE_FORMAT = svg (优先) 或 png
+   - EXTRACT_ALL = YES
+   - FULL_PATH_NAMES = NO
+   - STRIP_FROM_PATH = .
+   - OUTPUT_DIRECTORY = docs/doxygen
+   （注意：如果启用 MACRO_EXPANSION 可能很慢，默认先不要开；必要时只对关键模块启用）
+3) 运行 doxygen，生成 HTML 和图：
+   - doxygen docs/Doxyfile
+4) 将关键图（call graph/caller graph）输出路径记录在 docs/README.md
+
+### Python（pyan/pydeps）
+1) 优先尝试：
+   - python -m pip show pyan3 || python -m pip install --user pyan3
+   - pyan3 <入口py或核心包> --dot > docs/diagrams/python_callgraph.dot
+   - dot -Tsvg docs/diagrams/python_callgraph.dot -o docs/diagrams/python_callgraph.svg
+2) 若 pyan3 不可用，则用 pydeps（或退化为 AST 静态扫描生成简化调用图）
+3) 生成“包/模块依赖图 + 关键函数调用图”两张图，分别命名：
+   - python_callgraph.svg
+   - python_import_graph.svg
+
+输出到：
+- ./docs/diagrams/*.svg (或 png)
+- ./docs/02_callgraph.md（解释图、限制、如何阅读）
+
+必须注明限制：
+- function pointer / 虚函数 / 宏展开可能导致 C/C++ call graph 不完整
+- Python 动态调用（getattr、importlib）可能无法完全静态解析
+
+## Step 2.4 关键流程与逻辑分析（Deep Logic）
+对以下内容必须写清楚：
+- 关键“业务流程/算法流程”（用流程图/伪代码描述）
+- 关键数据结构（struct/class/关键dict对象）
+- 关键边界条件（输入校验、异常路径、资源释放）
+- 并发/异步（若有：线程、锁、队列、asyncio）
+- 外部依赖（DB、网络、文件系统、环境变量、配置文件）
+
+输出到：./docs/03_design_details.md
+要求每个关键流程至少包含：
+- 触发入口
+- 主路径步骤
+- 分支条件
+- 错误处理
+- 资源生命周期（创建/使用/释放）
+
+## Step 2.5 输出“设计文档（总览版）”
+生成一个面向读者的最终文档：./docs/DESIGN.md
+结构参考标准 SDD（Purpose/Scope/Background/HLD/LLD/Call Flow/Interface/Risks/Verification），至少包含：
+1. Purpose / Scope
+2. System Overview（模块图）
+3. High Level Design（关键模块职责 + 数据流）
+4. Low Level Design（关键函数/类/数据结构）
+5. Call Flow（按场景列出：启动、主要命令/服务请求、退出）
+6. Error Handling & Logging
+7. Performance considerations（潜在瓶颈）
+8. Security considerations（敏感信息、输入校验、命令执行）
+9. Verification plan（单元测试建议、集成测试点）
+10. Open Questions / TODO（不确定点清单）
+
+并生成 ./docs/README.md 作为目录索引：
+- DESIGN.md
+- 00_inventory.md
+- 01_architecture.md
+- 02_callgraph.md（附图链接）
+- 03_design_details.md
+- doxygen 输出入口（如 docs/doxygen/html/index.html）
+
+# 3) 输出格式要求（必须遵守）
+- 文档全部 Markdown
+- 图优先 SVG，其次 PNG
+- 每张图必须在文档中说明“怎么读、覆盖范围、限制”
+- 任何结论必须引用到具体代码位置（文件路径 + 函数名 + 行号范围，如果能拿到）
+
+# 4) 质量检查（最后必须做）
+- 统计：一共分析了多少文件、多少函数/类（近似即可，但要给出方法）
+- 检查 docs/README.md 是否能完整导航到所有产物
+- 报告“无法分析/缺失依赖/工具不可用”的情况与替代方案
+
+# 5) 执行提示（可用则用）
+- 如果环境已有“依赖图索引/VSCode 插件/CLI 可查询依赖”，优先复用它来生成 module dependency graph，并在文档中说明如何查询与复现。

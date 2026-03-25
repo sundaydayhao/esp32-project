@@ -1,0 +1,189 @@
+menu "门卫系统配置 (Doorman Configuration)"
+
+    menu "WiFi 设置"
+        config DOORMAN_WIFI_SSID
+            string "家庭 WiFi SSID"
+            default "MyHomeWiFi"
+            help
+                连接的家庭 WiFi 网络名称。
+
+        config DOORMAN_WIFI_PASSWORD
+            string "家庭 WiFi 密码"
+            default ""
+            help
+                家庭 WiFi 网络密码。
+
+        config DOORMAN_WIFI_MAX_RETRY
+            int "WiFi 最大重连次数"
+            default 10
+            help
+                WiFi 断线后最大重连尝试次数。
+    endmenu
+
+    menu "微信通知设置"
+        config DOORMAN_SERVERCHAN_KEY
+            string "Server酱 SendKey"
+            default ""
+            help
+                Server酱 (sct.ftqq.com) 的 SendKey，用于推送微信通知。
+                请前往 https://sct.ftqq.com 注册获取。
+
+        config DOORMAN_WECHAT_NOTIFY_TITLE
+            string "微信通知标题"
+            default "门口有动静！"
+            help
+                发送到微信的通知标题。
+
+        config DOORMAN_ENABLE_WECHAT_NOTIFY
+            bool "启用微信通知"
+            default y
+            help
+                是否启用微信推送通知。
+    endmenu
+
+    menu "摄像头引脚配置"
+        config DOORMAN_CAM_PIN_PWDN
+            int "摄像头 PWDN 引脚"
+            default -1
+            help
+                摄像头电源控制引脚，-1 表示不使用。
+
+        config DOORMAN_CAM_PIN_RESET
+            int "摄像头 RESET 引脚"
+            default -1
+            help
+                摄像头复位引脚，-1 表示不使用。
+
+        config DOORMAN_CAM_PIN_XCLK
+            int "摄像头 XCLK 引脚"
+            default 15
+            help
+                摄像头时钟输入引脚。
+
+        config DOORMAN_CAM_PIN_SIOD
+            int "摄像头 SIOD (SDA) 引脚"
+            default 4
+            help
+                摄像头 I2C 数据引脚。
+
+        config DOORMAN_CAM_PIN_SIOC
+            int "摄像头 SIOC (SCL) 引脚"
+            default 5
+            help
+                摄像头 I2C 时钟引脚。
+
+        config DOORMAN_CAM_PIN_D7
+            int "摄像头 D7 引脚"
+            default 16
+        config DOORMAN_CAM_PIN_D6
+            int "摄像头 D6 引脚"
+            default 17
+        config DOORMAN_CAM_PIN_D5
+            int "摄像头 D5 引脚"
+            default 18
+        config DOORMAN_CAM_PIN_D4
+            int "摄像头 D4 引脚"
+            default 12
+        config DOORMAN_CAM_PIN_D3
+            int "摄像头 D3 引脚"
+            default 10
+        config DOORMAN_CAM_PIN_D2
+            int "摄像头 D2 引脚"
+            default 8
+        config DOORMAN_CAM_PIN_D1
+            int "摄像头 D1 引脚"
+            default 9
+        config DOORMAN_CAM_PIN_D0
+            int "摄像头 D0 引脚"
+            default 11
+
+        config DOORMAN_CAM_PIN_VSYNC
+            int "摄像头 VSYNC 引脚"
+            default 6
+        config DOORMAN_CAM_PIN_HREF
+            int "摄像头 HREF 引脚"
+            default 7
+        config DOORMAN_CAM_PIN_PCLK
+            int "摄像头 PCLK 引脚"
+            default 13
+
+        config DOORMAN_CAM_XCLK_FREQ_HZ
+            int "摄像头 XCLK 频率 (Hz)"
+            default 20000000
+            help
+                摄像头 XCLK 时钟频率，通常为 20MHz。
+    endmenu
+
+    menu "运动检测设置"
+        config DOORMAN_PIR_GPIO
+            int "PIR 传感器 GPIO 引脚"
+            default 2
+            help
+                连接 PIR 人体红外传感器的 GPIO 引脚。
+
+        config DOORMAN_LED_GPIO
+            int "状态 LED GPIO 引脚"
+            default 48
+            help
+                状态指示 LED 的 GPIO 引脚（ESP32-S3 内置 LED 通常为 48）。
+
+        config DOORMAN_MOTION_COOLDOWN_SEC
+            int "运动检测冷却时间 (秒)"
+            default 30
+            range 5 300
+            help
+                两次运动检测事件之间的最小间隔时间（秒）。
+
+        config DOORMAN_ENABLE_SW_MOTION_DETECT
+            bool "启用软件运动检测（帧差法）"
+            default y
+            help
+                使用摄像头帧差算法进行软件运动检测，可与 PIR 传感器配合使用。
+
+        config DOORMAN_SW_MOTION_THRESHOLD
+            int "软件运动检测阈值 (%)"
+            default 5
+            range 1 50
+            help
+                帧差超过此百分比时触发运动检测。
+    endmenu
+
+    menu "快递检测设置"
+        config DOORMAN_ENABLE_PACKAGE_DETECTION
+            bool "启用快递检测"
+            default y
+            help
+                检测门口是否有快递包裹留下。
+
+        config DOORMAN_PACKAGE_DETECT_DELAY_SEC
+            int "快递检测延迟 (秒)"
+            default 60
+            range 10 300
+            help
+                运动停止后等待多少秒再检测是否有快递留下。
+
+        config DOORMAN_PACKAGE_DIFF_THRESHOLD
+            int "快递检测差异阈值 (%)"
+            default 10
+            range 1 50
+            help
+                与背景帧相比，差异超过此百分比时认为有快递留下。
+    endmenu
+
+    menu "图像服务器设置"
+        config DOORMAN_HTTP_SERVER_PORT
+            int "HTTP 图像服务器端口"
+            default 80
+            range 1 65535
+            help
+                本地 HTTP 图像服务器监听端口。
+
+        config DOORMAN_MAX_STORED_IMAGES
+            int "最大存储图像数量"
+            default 10
+            range 1 50
+            help
+                内存中保存的最近图像数量。
+    endmenu
+
+endmenu

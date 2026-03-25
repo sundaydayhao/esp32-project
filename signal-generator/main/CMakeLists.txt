@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "signal_generator.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        driver
+        esp_timer
+        console
+        esp_hw_support
+        freertos
+        fatfs
+        log
+        nvs_flash
+)

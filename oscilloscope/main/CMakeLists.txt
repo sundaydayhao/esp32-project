@@ -1,0 +1,23 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "wifi_ap.c"
+        "http_server.c"
+        "adc_sampler.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_netif
+        esp_event
+        esp_http_server
+        esp_adc
+        json
+        esp_timer
+        freertos
+        lwip
+    EMBED_FILES
+        "../web/index.html"
+        "../web/app.js"
+        "../web/style.css"
+)

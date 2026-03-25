@@ -1,0 +1,9 @@
+idf_component_register(
+    SRCS
+        "main.cc"
+        "person_detect_model.cc"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp-tflite-micro
+)

@@ -1,0 +1,22 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "wifi_manager.c"
+        "camera_manager.c"
+        "motion_detector.c"
+        "image_server.c"
+        "notification.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_http_server
+        esp_http_client
+        esp_https_server
+        esp_tls
+        driver
+        esp_timer
+        freertos
+        log
+        spiffs
+)

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32-S3 示波器</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-brand">
+                <span class="logo">Scope</span>
+                <h1>ESP32-S3 示波器</h1>
+            </div>
+
+            <div class="header-controls">
+                <div class="hctrl-group">
+                    <span class="hctrl-label">时间基准</span>
+                    <select id="timebaseSelect" class="hctrl-select">
+                        <option value="100">100 us</option>
+                        <option value="200">200 us</option>
+                        <option value="500">500 us</option>
+                        <option value="1000">1 ms</option>
+                        <option value="2000">2 ms</option>
+                        <option value="5000">5 ms</option>
+                        <option value="10000" selected>10 ms</option>
+                        <option value="20000">20 ms</option>
+                        <option value="50000">50 ms</option>
+                        <option value="100000">100 ms</option>
+                        <option value="200000">200 ms</option>
+                        <option value="500000">500 ms</option>
+                    </select>
+                </div>
+                <div class="hctrl-group">
+                    <span class="hctrl-label">采样率</span>
+                    <select id="sampleRateSelect" class="hctrl-select">
+                        <option value="100">100 SPS</option>
+                        <option value="200">200 SPS</option>
+                        <option value="500">500 SPS</option>
+                        <option value="1000" selected>1 kSPS</option>
+                        <option value="2000">2 kSPS</option>
+                        <option value="5000">5 kSPS</option>
+                        <option value="10000">10 kSPS</option>
+                    </select>
+                </div>
+                <div class="hctrl-group">
+                    <span class="hctrl-label">显示模式</span>
+                    <select id="displayMode" class="hctrl-select">
+                        <option value="line">线条</option>
+                        <option value="dot">点阵</option>
+                        <option value="fill">填充</option>
+                    </select>
+                </div>
+                <div class="hctrl-sep"></div>
+                <button id="btnRun" class="btn btn-run active">Run</button>
+                <button id="btnSingle" class="btn btn-single">Single</button>
+                <button id="btnStop" class="btn btn-stop">Stop</button>
+                <div class="hctrl-sep"></div>
+                <div class="status-indicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">未连接</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="dual-grid">
+            <div class="ch-column" id="col-ch1">
+                <div class="wave-panel ch1-panel">
+                    <div class="wave-topbar">
+                        <span class="ch-dot ch1-dot"></span>
+                        <span class="ch-tag ch1-color">CH1</span>
+                        <span class="ch-pin">GPIO1</span>
+                        <div class="wave-meas">
+                            <span class="meas-chip"><span class="ml">Vpp</span><span class="mv ch1-color" id="ch1Vpp">---</span></span>
+                            <span class="meas-chip"><span class="ml">Vmax</span><span class="mv ch1-color" id="ch1Vmax">---</span></span>
+                            <span class="meas-chip"><span class="ml">Vmin</span><span class="mv ch1-color" id="ch1Vmin">---</span></span>
+                            <span class="meas-chip"><span class="ml">Vrms</span><span class="mv ch1-color" id="ch1Vrms">---</span></span>
+                            <span class="meas-chip"><span class="ml">Freq</span><span class="mv ch1-color" id="ch1Freq">---</span></span>
+                        </div>
+                        <label class="toggle-switch" title="CH1 开关">
+                            <input type="checkbox" id="ch1Enable" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="canvas-wrap" id="wrap-ch1">
+                        <canvas id="canvas-ch1"></canvas>
+                    </div>
+                </div>
+
+                <div class="settings-panel ch1-settings">
+                    <div class="settings-title">
+                        <span class="ch-dot ch1-dot"></span>
+                        <span class="ch1-color">CH1 设置</span>
+                    </div>
+                    <div class="settings-body">
+                        <div class="srow">
+                            <label>V/格</label>
+                            <select id="ch1VdivSelect">
+                                <option value="0.1">100 mV/格</option>
+                                <option value="0.2">200 mV/格</option>
+                                <option value="0.5">500 mV/格</option>
+                                <option value="1.0" selected>1 V/格</option>
+                                <option value="2.0">2 V/格</option>
+                                <option value="3.3">3.3 V/格</option>
+                            </select>
+                        </div>
+                        <div class="srow">
+                            <label>偏移</label>
+                            <input type="range" id="ch1Offset" min="-100" max="100" value="0" class="slider ch1-slider">
+                            <span id="ch1OffsetVal">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ch-column" id="col-ch2">
+                <div class="wave-panel ch2-panel">
+                    <div class="wave-topbar">
+                        <span class="ch-dot ch2-dot"></span>
+                        <span class="ch-tag ch2-color">CH2</span>
+                        <span class="ch-pin">GPIO2</span>
+                        <div class="wave-meas">
+                            <span class="meas-chip"><span class="ml">Vpp</span><span class="mv ch2-color" id="ch2Vpp">---</span></span>
+                            <span class="meas-chip"><span class="ml">Vmax</span><span class="mv ch2-color" id="ch2Vmax">---</span></span>
+                            <span class="meas-chip"><span class="ml">Vmin</span><span class="mv ch2-color" id="ch2Vmin">---</span></span>
+                            <span class="meas-chip"><span class="ml">Vrms</span><span class="mv ch2-color" id="ch2Vrms">---</span></span>
+                            <span class="meas-chip"><span class="ml">Freq</span><span class="mv ch2-color" id="ch2Freq">---</span></span>
+                        </div>
+                        <label class="toggle-switch" title="CH2 开关">
+                            <input type="checkbox" id="ch2Enable" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="canvas-wrap" id="wrap-ch2">
+                        <canvas id="canvas-ch2"></canvas>
+                    </div>
+                </div>
+
+                <div class="settings-panel ch2-settings">
+                    <div class="settings-title">
+                        <span class="ch-dot ch2-dot"></span>
+                        <span class="ch2-color">CH2 设置</span>
+                    </div>
+                    <div class="settings-body">
+                        <div class="srow">
+                            <label>V/格</label>
+                            <select id="ch2VdivSelect">
+                                <option value="0.1">100 mV/格</option>
+                                <option value="0.2">200 mV/格</option>
+                                <option value="0.5">500 mV/格</option>
+                                <option value="1.0" selected>1 V/格</option>
+                                <option value="2.0">2 V/格</option>
+                                <option value="3.3">3.3 V/格</option>
+                            </select>
+                        </div>
+                        <div class="srow">
+                            <label>偏移</label>
+                            <input type="range" id="ch2Offset" min="-100" max="100" value="0" class="slider ch2-slider">
+                            <span id="ch2OffsetVal">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-panel shared-settings">
+            <div class="settings-title">
+                <span class="ch-dot ch1-dot"></span>
+                <span>采集设置</span>
+            </div>
+            <div class="settings-body">
+                <div class="srow">
+                    <label>余辉</label>
+                    <input type="range" id="persistence" min="0" max="10" value="0" class="slider">
+                    <span id="persistenceVal">关</span>
+                </div>
+                <div class="srow info-row">
+                    <span class="il">采样率</span><span class="iv" id="sampleRate">---</span>
+                    <span class="il">帧率</span><span class="iv" id="frameRate">---</span>
+                    <span class="il">缓冲</span><span class="iv" id="bufferSize">---</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <span id="statusMsg">正在连接到示波器...</span>
+            <span id="timestampDisplay"></span>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>

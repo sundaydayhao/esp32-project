@@ -1,0 +1,36 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "lcd/lcd_driver.c"
+        "lcd/waveshare_board.c"
+        "net/wifi_manager.c"
+        "net/ntp_client.c"
+        "net/weather_client.c"
+        "ui/ui_renderer.c"
+        "ui/ui_font_noto_sc_16.c"
+        "storage/config_store.c"
+    INCLUDE_DIRS
+        "."
+        "lcd"
+        "net"
+        "ui"
+        "storage"
+    REQUIRES
+        esp_lcd
+        esp_driver_gpio
+        esp_driver_i2c
+        esp_wifi
+        esp_http_client
+        lwip
+        nvs_flash
+        esp_timer
+        esp_netif
+        esp_event
+        freertos
+        log
+        heap
+        json
+        mbedtls
+    EMBED_TXTFILES
+        "certs/isrg_root_x1.pem"
+)

@@ -1,0 +1,236 @@
+menu "Photo Album Hardware"
+
+    choice PHOTO_ALBUM_BOARD_TYPE
+        prompt "Development board"
+        default PHOTO_ALBUM_BOARD_WAVESHARE_7
+        help
+            Select the target board. The default option keeps the existing
+            Waveshare 7-inch RGB LCD path unchanged.
+
+        config PHOTO_ALBUM_BOARD_WAVESHARE_7
+            bool "Waveshare ESP32-S3-Touch-LCD-7"
+
+        config PHOTO_ALBUM_BOARD_NT35510
+            bool "Generic NT35510 I80 board"
+    endchoice
+
+    if PHOTO_ALBUM_BOARD_NT35510
+
+        config PHOTO_ALBUM_NT35510_H_RES
+            int "Horizontal resolution"
+            range 1 2048
+            default 800
+
+        config PHOTO_ALBUM_NT35510_V_RES
+            int "Vertical resolution"
+            range 1 2048
+            default 480
+
+        config PHOTO_ALBUM_NT35510_PIXEL_CLOCK_HZ
+            int "I80 pixel clock (Hz)"
+            range 1 40000000
+            default 8000000
+
+        config PHOTO_ALBUM_NT35510_DRAW_BUF_LINES
+            int "I80 flush buffer lines"
+            range 1 480
+            default 40
+
+        choice PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_CHOICE
+            prompt "I80 bus width"
+            default PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_16
+
+            config PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_8
+                bool "8-bit"
+
+            config PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_16
+                bool "16-bit"
+        endchoice
+
+        config PHOTO_ALBUM_NT35510_I80_BUS_WIDTH
+            int
+            default 8 if PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_8
+            default 16 if PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_16
+
+        choice PHOTO_ALBUM_NT35510_COLOR_ORDER
+            prompt "Panel color order"
+            default PHOTO_ALBUM_NT35510_COLOR_ORDER_RGB
+
+            config PHOTO_ALBUM_NT35510_COLOR_ORDER_RGB
+                bool "RGB"
+
+            config PHOTO_ALBUM_NT35510_COLOR_ORDER_BGR
+                bool "BGR"
+        endchoice
+
+        config PHOTO_ALBUM_NT35510_SWAP_XY
+            bool "Swap X/Y"
+            default y
+
+        config PHOTO_ALBUM_NT35510_MIRROR_X
+            bool "Mirror X"
+            default y
+
+        config PHOTO_ALBUM_NT35510_MIRROR_Y
+            bool "Mirror Y"
+            default n
+
+        config PHOTO_ALBUM_NT35510_INVERT_COLOR
+            bool "Invert color"
+            default n
+
+        config PHOTO_ALBUM_NT35510_SWAP_RGB565_BYTES
+            bool "Swap RGB565 bytes before I80 flush"
+            default y if PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_8
+            default n if PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_16
+
+        config PHOTO_ALBUM_NT35510_PIN_WR
+            int "WR pin"
+            range -1 48
+            default 18
+
+        config PHOTO_ALBUM_NT35510_PIN_CS
+            int "CS pin"
+            range -1 48
+            default 17
+
+        config PHOTO_ALBUM_NT35510_PIN_DC
+            int "DC pin"
+            range -1 48
+            default 16
+
+        config PHOTO_ALBUM_NT35510_PIN_RST
+            int "RST pin"
+            range -1 48
+            default 20
+
+        config PHOTO_ALBUM_NT35510_PIN_BK_LIGHT
+            int "Backlight pin"
+            range -1 48
+            default 38
+
+        config PHOTO_ALBUM_NT35510_PIN_POWER
+            int "Panel power-enable pin"
+            range -1 48
+            default 19
+
+        config PHOTO_ALBUM_NT35510_BK_LIGHT_ACTIVE_HIGH
+            bool "Backlight active high"
+            default y
+
+        config PHOTO_ALBUM_NT35510_POWER_ACTIVE_HIGH
+            bool "Panel power-enable active high"
+            default y
+
+        config PHOTO_ALBUM_NT35510_PIN_D0
+            int "D0 pin"
+            range -1 48
+            default 0
+
+        config PHOTO_ALBUM_NT35510_PIN_D1
+            int "D1 pin"
+            range -1 48
+            default 1
+
+        config PHOTO_ALBUM_NT35510_PIN_D2
+            int "D2 pin"
+            range -1 48
+            default 2
+
+        config PHOTO_ALBUM_NT35510_PIN_D3
+            int "D3 pin"
+            range -1 48
+            default 3
+
+        config PHOTO_ALBUM_NT35510_PIN_D4
+            int "D4 pin"
+            range -1 48
+            default 4
+
+        config PHOTO_ALBUM_NT35510_PIN_D5
+            int "D5 pin"
+            range -1 48
+            default 5
+
+        config PHOTO_ALBUM_NT35510_PIN_D6
+            int "D6 pin"
+            range -1 48
+            default 6
+
+        config PHOTO_ALBUM_NT35510_PIN_D7
+            int "D7 pin"
+            range -1 48
+            default 7
+
+        if PHOTO_ALBUM_NT35510_I80_BUS_WIDTH_16
+
+            config PHOTO_ALBUM_NT35510_PIN_D8
+                int "D8 pin"
+                range -1 48
+                default 8
+
+            config PHOTO_ALBUM_NT35510_PIN_D9
+                int "D9 pin"
+                range -1 48
+                default 9
+
+            config PHOTO_ALBUM_NT35510_PIN_D10
+                int "D10 pin"
+                range -1 48
+                default 10
+
+            config PHOTO_ALBUM_NT35510_PIN_D11
+                int "D11 pin"
+                range -1 48
+                default 11
+
+            config PHOTO_ALBUM_NT35510_PIN_D12
+                int "D12 pin"
+                range -1 48
+                default 12
+
+            config PHOTO_ALBUM_NT35510_PIN_D13
+                int "D13 pin"
+                range -1 48
+                default 13
+
+            config PHOTO_ALBUM_NT35510_PIN_D14
+                int "D14 pin"
+                range -1 48
+                default 14
+
+            config PHOTO_ALBUM_NT35510_PIN_D15
+                int "D15 pin"
+                range -1 48
+                default 15
+
+        endif
+
+        config PHOTO_ALBUM_NT35510_SD_SPI_FREQ_KHZ
+            int "SD SPI clock (kHz)"
+            range 100 40000
+            default 20000
+
+        config PHOTO_ALBUM_NT35510_PIN_SD_MOSI
+            int "SD MOSI pin"
+            range -1 48
+            default 41
+
+        config PHOTO_ALBUM_NT35510_PIN_SD_MISO
+            int "SD MISO pin"
+            range -1 48
+            default 39
+
+        config PHOTO_ALBUM_NT35510_PIN_SD_CLK
+            int "SD CLK pin"
+            range -1 48
+            default 40
+
+        config PHOTO_ALBUM_NT35510_PIN_SD_CS
+            int "SD CS pin"
+            range -1 48
+            default 42
+
+    endif
+
+endmenu
