@@ -5,6 +5,10 @@
 [![MCU](https://img.shields.io/badge/MCU-ESP32--S3-green)]()
 [![Weather](https://img.shields.io/badge/Weather-QWeather-orange)]()
 
+## 效果展示
+
+![运行效果](example.jpg)
+
 基于 ESP32-S3 的桌面时钟项目，提供 800x480 大屏时钟界面、Wi-Fi 联网、NTP 自动对时、QWeather 实时天气和 3 日预报，并且已经支持两套显示硬件路径：
 
 - `Waveshare ESP32-S3-Touch-LCD-7`，RGB 屏直刷路径，默认配置
