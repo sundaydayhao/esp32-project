@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 电路板放大镜</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d1117;
+    color: #c9d1d9;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  header {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .logo {
+    font-size: 1.1em;
+    font-weight: 700;
+    color: #58a6ff;
+    white-space: nowrap;
+  }
+  .logo span { color: #3fb950; }
+
+  .ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 4px 10px;
+  }
+  .ctrl-group label {
+    font-size: 0.78em;
+    color: #8b949e;
+    white-space: nowrap;
+  }
+  .ctrl-group .val {
+    font-size: 0.82em;
+    color: #58a6ff;
+    font-weight: 600;
+    min-width: 30px;
+    text-align: right;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 88px;
+    height: 4px;
+    background: #30363d;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #58a6ff;
+    cursor: pointer;
+  }
+
+  select {
+    background: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 0.8em;
+    cursor: pointer;
+    outline: none;
+  }
+
+  button {
+    background: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.8em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover  { background: #30363d; border-color: #58a6ff; }
+  button.active { background: #1f6feb; border-color: #58a6ff; color: #fff; }
+
+  .sep { width: 1px; height: 24px; background: #30363d; flex-shrink: 0; }
+
+  /* ── Main view ── */
+  #viewArea {
+    flex: 1;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    background: #010409;
+  }
+
+  #mainCanvas {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  /* ── Magnifier lens ── */
+  #lensWrap {
+    position: fixed;
+    pointer-events: none;
+    display: none;
+    z-index: 100;
+  }
+  #lensCanvas {
+    border-radius: 50%;
+    border: 3px solid #58a6ff;
+    box-shadow: 0 0 0 1px #0d1117, 0 0 22px rgba(88,166,255,0.45);
+    display: block;
+  }
+  /* CSS crosshair overlay on lens */
+  #lensWrap::before,
+  #lensWrap::after {
+    content: '';
+    position: absolute;
+    background: rgba(88,166,255,0.55);
+    pointer-events: none;
+    z-index: 101;
+  }
+  #lensWrap::before {
+    width: 1px; height: 18px;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+  }
+  #lensWrap::after {
+    width: 18px; height: 1px;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* ── Badges ── */
+  #zoomBadge {
+    position: absolute;
+    top: 10px; left: 10px;
+    background: rgba(31,111,235,0.85);
+    color: #fff;
+    font-size: 0.8em;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    pointer-events: none;
+    display: none;
+  }
+  #frozenBanner {
+    position: absolute;
+    top: 10px; right: 10px;
+    background: rgba(248,81,73,0.85);
+    color: #fff;
+    font-size: 0.78em;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    display: none;
+    pointer-events: none;
+  }
+
+  /* ── Status bar ── */
+  #statusBar {
+    position: absolute;
+    bottom: 8px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(22,27,34,0.88);
+    border: 1px solid #30363d;
+    border-radius: 20px;
+    padding: 3px 14px;
+    font-size: 0.75em;
+    color: #8b949e;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #d29922;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .dot.ok  { background: #3fb950; }
+  .dot.err { background: #f85149; }
+
+  /* ── Coord tooltip ── */
+  #coordTip {
+    position: fixed;
+    background: rgba(22,27,34,0.92);
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.72em;
+    color: #8b949e;
+    pointer-events: none;
+    display: none;
+    z-index: 200;
+  }
+
+  #streamImg { display: none; }
+
+  @keyframes flashSave {
+    0%   { opacity: 0.8; }
+    100% { opacity: 0; }
+  }
+  #saveFlash {
+    position: fixed; inset: 0;
+    background: #fff;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 999;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">&#128300; ESP32 <span>放大镜</span></div>
+
+  <div class="ctrl-group">
+    <label>放大倍数</label>
+    <input type="range" id="zoomSlider" min="1.5" max="12" step="0.5" value="4">
+    <span class="val" id="zoomVal">4x</span>
+  </div>
+
+  <div class="ctrl-group">
+    <label>镜头大小</label>
+    <input type="range" id="lensSlider" min="120" max="360" step="20" value="220">
+    <span class="val" id="lensVal">220</span>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="ctrl-group">
+    <label>分辨率</label>
+    <select id="resSel">
+      <option value="5">QVGA 320x240</option>
+      <option value="6">CIF  400x296</option>
+      <option value="8" selected>VGA  640x480</option>
+      <option value="9">SVGA 800x600</option>
+      <option value="10">XGA 1024x768</option>
+      <option value="13">UXGA 1600x1200</option>
+    </select>
+  </div>
+
+  <div class="ctrl-group">
+    <label>画质</label>
+    <input type="range" id="qualSlider" min="4" max="40" step="2" value="10">
+    <span class="val" id="qualVal">10</span>
+  </div>
+
+  <div class="sep"></div>
+
+  <button id="mirrorBtn">&#8596; 镜像</button>
+  <button id="flipBtn">&#8597; 翻转</button>
+
+  <div class="sep"></div>
+
+  <button id="freezeBtn">&#10052; 冻结</button>
+  <button id="saveBtn">&#128190; 保存截图</button>
+</header>
+
+<div id="viewArea">
+  <canvas id="mainCanvas" width="640" height="480"></canvas>
+  <div id="zoomBadge">4x</div>
+  <div id="frozenBanner">&#9646;&#9646; 已冻结</div>
+  <div id="statusBar">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">正在连接摄像头...</span>
+  </div>
+</div>
+
+<div id="lensWrap">
+  <canvas id="lensCanvas" width="220" height="220"></canvas>
+</div>
+
+<div id="coordTip"></div>
+<div id="saveFlash"></div>
+
+<img id="streamImg" src="/stream" crossorigin="anonymous" alt="">
+
+<script>
+(function () {
+  'use strict';
+
+  var streamImg    = document.getElementById('streamImg');
+  var mainCanvas   = document.getElementById('mainCanvas');
+  var ctx          = mainCanvas.getContext('2d');
+  var lensWrap     = document.getElementById('lensWrap');
+  var lensCanvas   = document.getElementById('lensCanvas');
+  var lensCtx      = lensCanvas.getContext('2d');
+  var zoomSlider   = document.getElementById('zoomSlider');
+  var zoomVal      = document.getElementById('zoomVal');
+  var zoomBadge    = document.getElementById('zoomBadge');
+  var lensSlider   = document.getElementById('lensSlider');
+  var lensVal      = document.getElementById('lensVal');
+  var qualSlider   = document.getElementById('qualSlider');
+  var qualVal      = document.getElementById('qualVal');
+  var resSel       = document.getElementById('resSel');
+  var freezeBtn    = document.getElementById('freezeBtn');
+  var saveBtn      = document.getElementById('saveBtn');
+  var mirrorBtn    = document.getElementById('mirrorBtn');
+  var flipBtn      = document.getElementById('flipBtn');
+  var statusDot    = document.getElementById('statusDot');
+  var statusText   = document.getElementById('statusText');
+  var frozenBanner = document.getElementById('frozenBanner');
+  var coordTip     = document.getElementById('coordTip');
+  var saveFlash    = document.getElementById('saveFlash');
+
+  var zoom        = 4;
+  var lensSize    = 220;
+  var frozen      = false;
+  var mouseX      = 0;
+  var mouseY      = 0;
+  var lensActive  = false;
+  var frameOk     = false;
+  var mirror      = false;
+  var flip        = false;
+  var frameCount  = 0;
+  var lastFpsTime = Date.now();
+  var fps         = 0;
+
+  /* ── Status helper ── */
+  function setStatus(msg, state) {
+    statusText.textContent = msg;
+    statusDot.className = 'dot' + (state === 'ok' ? ' ok' : state === 'err' ? ' err' : '');
+  }
+
+  /* ── Camera control API ── */
+  function applyControl(varName, value) {
+    fetch('/control?var=' + varName + '&val=' + value).catch(function () {});
+  }
+
+  /* ── Zoom slider ── */
+  zoomSlider.addEventListener('input', function () {
+    zoom = parseFloat(this.value);
+    zoomVal.textContent  = zoom + 'x';
+    zoomBadge.textContent = zoom + 'x';
+  });
+
+  /* ── Lens size slider ── */
+  lensSlider.addEventListener('input', function () {
+    lensSize = parseInt(this.value, 10);
+    lensVal.textContent   = lensSize;
+    lensCanvas.width      = lensSize;
+    lensCanvas.height     = lensSize;
+    lensWrap.style.width  = lensSize + 'px';
+    lensWrap.style.height = lensSize + 'px';
+  });
+
+  /* ── Quality slider ── */
+  qualSlider.addEventListener('input', function () {
+    qualVal.textContent = this.value;
+  });
+  qualSlider.addEventListener('change', function () {
+    applyControl('quality', this.value);
+  });
+
+  /* ── Resolution select ── */
+  resSel.addEventListener('change', function () {
+    applyControl('framesize', this.value);
+    setStatus('切换分辨率中...', 'warn');
+    setTimeout(function () {
+      if (frameOk) setStatus('摄像头已连接  ' + fps + ' fps', 'ok');
+    }, 2500);
+  });
+
+  /* ── Mirror ── */
+  mirrorBtn.addEventListener('click', function () {
+    mirror = !mirror;
+    this.classList.toggle('active', mirror);
+    applyControl('hmirror', mirror ? 1 : 0);
+  });
+
+  /* ── Flip ── */
+  flipBtn.addEventListener('click', function () {
+    flip = !flip;
+    this.classList.toggle('active', flip);
+    applyControl('vflip', flip ? 1 : 0);
+  });
+
+  /* ── Freeze ── */
+  freezeBtn.addEventListener('click', function () {
+    frozen = !frozen;
+    this.classList.toggle('active', frozen);
+    frozenBanner.style.display = frozen ? 'block' : 'none';
+    this.textContent = frozen ? '\u25B6 继续' : '\u2744 冻结';
+  });
+
+  /* ── Save snapshot ── */
+  saveBtn.addEventListener('click', function () {
+    var link = document.createElement('a');
+    link.download = 'pcb_' + Date.now() + '.png';
+    link.href = mainCanvas.toDataURL('image/png');
+    link.click();
+    saveFlash.style.animation = 'none';
+    void saveFlash.offsetHeight;
+    saveFlash.style.animation = 'flashSave 0.35s ease-out forwards';
+  });
+
+  /* ── Stream image events ── */
+  streamImg.addEventListener('load', function () {
+    if (!frameOk) {
+      var w = streamImg.naturalWidth  || 640;
+      var h = streamImg.naturalHeight || 480;
+      mainCanvas.width  = w;
+      mainCanvas.height = h;
+      frameOk = true;
+    }
+    frameCount++;
+    var now = Date.now();
+    if (now - lastFpsTime >= 1000) {
+      fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
+      frameCount  = 0;
+      lastFpsTime = now;
+      if (!frozen) setStatus('摄像头已连接  ' + fps + ' fps', 'ok');
+    }
+  });
+
+  streamImg.addEventListener('error', function () {
+    frameOk = false;
+    setStatus('摄像头连接失败，请检查设备', 'err');
+    setTimeout(function () {
+      streamImg.src = '/stream?' + Date.now();
+    }, 3000);
+  });
+
+  /* ── Animation loop: stream img → main canvas ── */
+  function animate() {
+    if (!frozen && frameOk) {
+      try {
+        ctx.save();
+        if (mirror || flip) {
+          ctx.translate(
+            mirror ? mainCanvas.width  : 0,
+            flip   ? mainCanvas.height : 0
+          );
+          ctx.scale(mirror ? -1 : 1, flip ? -1 : 1);
+        }
+        ctx.drawImage(streamImg, 0, 0, mainCanvas.width, mainCanvas.height);
+        ctx.restore();
+      } catch (e) { /* tainted canvas guard */ }
+    }
+    if (lensActive) renderLens();
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+
+  /* ── Magnifier lens rendering ── */
+  function renderLens() {
+    var rect   = mainCanvas.getBoundingClientRect();
+    var scaleX = mainCanvas.width  / rect.width;
+    var scaleY = mainCanvas.height / rect.height;
+
+    var cx = (mouseX - rect.left) * scaleX;
+    var cy = (mouseY - rect.top)  * scaleY;
+
+    var srcW = lensSize / zoom;
+    var srcH = lensSize / zoom;
+    var srcX = cx - srcW / 2;
+    var srcY = cy - srcH / 2;
+
+    lensCtx.clearRect(0, 0, lensSize, lensSize);
+
+    /* Circular clip */
+    lensCtx.save();
+    lensCtx.beginPath();
+    lensCtx.arc(lensSize / 2, lensSize / 2, lensSize / 2 - 1, 0, Math.PI * 2);
+    lensCtx.clip();
+
+    /* Zoomed image */
+    try {
+      lensCtx.drawImage(mainCanvas, srcX, srcY, srcW, srcH,
+                        0, 0, lensSize, lensSize);
+    } catch (e) { /* tainted */ }
+
+    /* Crosshair lines */
+    var cx2 = lensSize / 2;
+    var cy2 = lensSize / 2;
+    lensCtx.strokeStyle = 'rgba(88,166,255,0.75)';
+    lensCtx.lineWidth   = 1;
+    lensCtx.beginPath();
+    lensCtx.moveTo(cx2, cy2 - 16); lensCtx.lineTo(cx2, cy2 + 16);
+    lensCtx.moveTo(cx2 - 16, cy2); lensCtx.lineTo(cx2 + 16, cy2);
+    lensCtx.stroke();
+
+    /* Center dot */
+    lensCtx.fillStyle = 'rgba(248,81,73,0.9)';
+    lensCtx.beginPath();
+    lensCtx.arc(cx2, cy2, 2.5, 0, Math.PI * 2);
+    lensCtx.fill();
+
+    lensCtx.restore();
+
+    /* Scale bar at bottom of lens */
+    var barPx = Math.round(lensSize * 0.28);
+    lensCtx.fillStyle = 'rgba(13,17,23,0.72)';
+    lensCtx.fillRect(lensSize / 2 - barPx / 2 - 2, lensSize - 20, barPx + 4, 14);
+    lensCtx.strokeStyle = '#58a6ff';
+    lensCtx.lineWidth   = 1.5;
+    lensCtx.beginPath();
+    lensCtx.moveTo(lensSize / 2 - barPx / 2, lensSize - 13);
+    lensCtx.lineTo(lensSize / 2 + barPx / 2, lensSize - 13);
+    /* tick marks */
+    lensCtx.moveTo(lensSize / 2 - barPx / 2, lensSize - 17);
+    lensCtx.lineTo(lensSize / 2 - barPx / 2, lensSize - 9);
+    lensCtx.moveTo(lensSize / 2 + barPx / 2, lensSize - 17);
+    lensCtx.lineTo(lensSize / 2 + barPx / 2, lensSize - 9);
+    lensCtx.stroke();
+
+    /* Zoom label inside lens (top) */
+    lensCtx.fillStyle = 'rgba(13,17,23,0.72)';
+    lensCtx.fillRect(lensSize / 2 - 18, 6, 36, 14);
+    lensCtx.fillStyle   = '#58a6ff';
+    lensCtx.font        = 'bold 11px monospace';
+    lensCtx.textAlign   = 'center';
+    lensCtx.fillText(zoom + 'x', lensSize / 2, 17);
+  }
+
+  /* ── Mouse enter/leave canvas ── */
+  mainCanvas.addEventListener('mouseenter', function () {
+    lensActive = true;
+    lensWrap.style.display = 'block';
+    zoomBadge.style.display = 'block';
+  });
+
+  mainCanvas.addEventListener('mouseleave', function () {
+    lensActive = false;
+    lensWrap.style.display = 'none';
+    zoomBadge.style.display = 'none';
+    coordTip.style.display  = 'none';
+  });
+
+  /* ── Mouse move ── */
+  mainCanvas.addEventListener('mousemove', function (e) {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+
+    /* Position lens: offset so it doesn't cover the cursor area */
+    var half   = lensSize / 2;
+    var vw     = window.innerWidth;
+    var vh     = window.innerHeight;
+    var lx     = e.clientX - half;
+    var ly     = e.clientY - half;
+
+    /* Keep lens inside viewport */
+    if (lx < 4)       lx = 4;
+    if (ly < 4)       ly = 4;
+    if (lx + lensSize > vw - 4) lx = vw - lensSize - 4;
+    if (ly + lensSize > vh - 4) ly = vh - lensSize - 4;
+
+    lensWrap.style.left = lx + 'px';
+    lensWrap.style.top  = ly + 'px';
+
+    /* Coordinate tooltip */
+    var rect   = mainCanvas.getBoundingClientRect();
+    var scaleX = mainCanvas.width  / rect.width;
+    var scaleY = mainCanvas.height / rect.height;
+    var px     = Math.round((e.clientX - rect.left) * scaleX);
+    var py     = Math.round((e.clientY - rect.top)  * scaleY);
+
+    if (px >= 0 && py >= 0 && px <= mainCanvas.width && py <= mainCanvas.height) {
+      coordTip.textContent   = 'X:' + px + '  Y:' + py;
+      coordTip.style.display = 'block';
+      coordTip.style.left    = (e.clientX + 14) + 'px';
+      coordTip.style.top     = (e.clientY - 20) + 'px';
+    } else {
+      coordTip.style.display = 'none';
+    }
+  });
+
+  /* ── Touch support (mobile) ── */
+  mainCanvas.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    lensActive = true;
+    lensWrap.style.display  = 'block';
+    zoomBadge.style.display = 'block';
+  }, { passive: false });
+
+  mainCanvas.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    var t  = e.touches[0];
+    mouseX = t.clientX;
+    mouseY = t.clientY;
+
+    var half = lensSize / 2;
+    var vw   = window.innerWidth;
+    var vh   = window.innerHeight;
+
+    /* On touch, show lens above the finger */
+    var lx = t.clientX - half;
+    var ly = t.clientY - half - lensSize - 20;
+
+    if (lx < 4)       lx = 4;
+    if (ly < 4)       ly = 4;
+    if (lx + lensSize > vw - 4) lx = vw - lensSize - 4;
+    if (ly + lensSize > vh - 4) ly = vh - lensSize - 4;
+
+    lensWrap.style.left = lx + 'px';
+    lensWrap.style.top  = ly + 'px';
+  }, { passive: false });
+
+  mainCanvas.addEventListener('touchend', function () {
+    lensActive = false;
+    lensWrap.style.display  = 'none';
+    zoomBadge.style.display = 'none';
+  });
+
+  /* ── Keyboard shortcuts ── */
+  document.addEventListener('keydown', function (e) {
+    switch (e.key) {
+      case 'f': case 'F':
+        freezeBtn.click();
+        break;
+      case 's': case 'S':
+        if (e.ctrlKey || e.metaKey) { e.preventDefault(); saveBtn.click(); }
+        break;
+      case '+': case '=':
+        zoom = Math.min(12, zoom + 0.5);
+        zoomSlider.value      = zoom;
+        zoomVal.textContent   = zoom + 'x';
+        zoomBadge.textContent = zoom + 'x';
+        break;
+      case '-':
+        zoom = Math.max(1.5, zoom - 0.5);
+        zoomSlider.value      = zoom;
+        zoomVal.textContent   = zoom + 'x';
+        zoomBadge.textContent = zoom + 'x';
+        break;
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
