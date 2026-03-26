@@ -1,0 +1,25 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "lcd12864.c"
+        "wifi_manager.c"
+        "ntp_client.c"
+        "weather_client.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        driver
+        esp_wifi
+        esp_http_client
+        lwip
+        nvs_flash
+        esp_timer
+        esp_netif
+        esp_event
+        freertos
+        log
+        heap
+        json
+        mbedtls
+        esp_sntp
+)

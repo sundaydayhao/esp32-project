@@ -1,0 +1,128 @@
+menu "LCD12864 Clock Configuration"
+
+    menu "WiFi Settings"
+        config WIFI_SSID
+            string "WiFi SSID"
+            default "your_ssid"
+            help
+                WiFi 网络名称（SSID）
+
+        config WIFI_PASSWORD
+            string "WiFi Password"
+            default "your_password"
+            help
+                WiFi 密码
+    endmenu
+
+    menu "LCD12864 Pin Configuration (8-bit Parallel)"
+        comment "数据总线 D0~D7（8位并行）"
+
+        config LCD_PIN_D0
+            int "LCD D0 GPIO"
+            default 12
+            help
+                LCD12864 数据总线 D0 引脚
+
+        config LCD_PIN_D1
+            int "LCD D1 GPIO"
+            default 13
+            help
+                LCD12864 数据总线 D1 引脚
+
+        config LCD_PIN_D2
+            int "LCD D2 GPIO"
+            default 14
+            help
+                LCD12864 数据总线 D2 引脚
+
+        config LCD_PIN_D3
+            int "LCD D3 GPIO"
+            default 15
+            help
+                LCD12864 数据总线 D3 引脚
+
+        config LCD_PIN_D4
+            int "LCD D4 GPIO"
+            default 16
+            help
+                LCD12864 数据总线 D4 引脚
+
+        config LCD_PIN_D5
+            int "LCD D5 GPIO"
+            default 17
+            help
+                LCD12864 数据总线 D5 引脚
+
+        config LCD_PIN_D6
+            int "LCD D6 GPIO"
+            default 18
+            help
+                LCD12864 数据总线 D6 引脚
+
+        config LCD_PIN_D7
+            int "LCD D7 GPIO"
+            default 19
+            help
+                LCD12864 数据总线 D7 引脚
+
+        comment "控制信号"
+
+        config LCD_PIN_RS
+            int "LCD RS GPIO"
+            default 21
+            help
+                LCD12864 寄存器选择引脚（0=命令，1=数据）
+
+        config LCD_PIN_E
+            int "LCD E (Enable) GPIO"
+            default 22
+            help
+                LCD12864 使能引脚（下降沿锁存数据）
+                注意：RW 引脚请直接接 GND（始终写模式）
+
+        config LCD_PIN_RST
+            int "LCD RST GPIO"
+            default 4
+            help
+                LCD12864 复位引脚（低电平有效）
+    endmenu
+
+    menu "Weather API Settings"
+        config WEATHER_API_KEY
+            string "QWeather API Key"
+            default "your_qweather_api_key"
+            help
+                和风天气 API Key，在 https://dev.qweather.com 注册后获取。
+                免费版每天 1000 次请求。
+
+        config WEATHER_LOCATION_ID
+            string "Location ID"
+            default "101010100"
+            help
+                城市 Location ID，可在和风天气城市列表中查询。
+                常用城市：
+                  北京  101010100
+                  上海  101020100
+                  广州  101280101
+                  深圳  101280601
+                  杭州  101210101
+                  成都  101270101
+
+        config WEATHER_UPDATE_INTERVAL_MIN
+            int "Weather update interval (minutes)"
+            default 30
+            range 5 1440
+            help
+                天气数据更新间隔（分钟），免费版建议 30 分钟以上。
+    endmenu
+
+    menu "NTP Settings"
+        config NTP_SYNC_INTERVAL_MIN
+            int "NTP re-sync interval (minutes)"
+            default 60
+            range 10 1440
+            help
+                NTP 时间重新同步间隔（分钟）。
+    endmenu
+
+endmenu
