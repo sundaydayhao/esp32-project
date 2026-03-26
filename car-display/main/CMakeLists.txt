@@ -1,0 +1,27 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "display/display.c"
+        "ui/ui_manager.c"
+        "sensors/speed_sensor.c"
+        "sensors/imu_sensor.c"
+        "empathy/empathy_engine.c"
+        "voice/voice_handler.c"
+    INCLUDE_DIRS
+        "."
+        "display"
+        "ui"
+        "sensors"
+        "empathy"
+        "voice"
+    REQUIRES
+        driver
+        esp_lcd
+        esp_timer
+        freertos
+        nvs_flash
+        esp_event
+        log
+        heap
+        spi_flash
+)

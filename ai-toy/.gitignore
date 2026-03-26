@@ -1,0 +1,27 @@
+# ESP-IDF 编译产物
+firmware/build/
+firmware/sdkconfig
+firmware/dependencies.lock
+firmware/managed_components/
+
+# Python
+server/__pycache__/
+server/*.pyc
+server/venv/
+server/.venv/
+server/*.egg-info/
+
+# 敏感配置 (不提交API Keys)
+# server/config.py  # 如果包含真实API Keys，取消此注释
+
+# VS Code
+.vscode/c_cpp_properties.json
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# 日志
+*.log

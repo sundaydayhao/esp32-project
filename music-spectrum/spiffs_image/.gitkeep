@@ -1,0 +1,9 @@
+# 将 MP3 文件放在此目录中，然后运行以下命令烧录到 SPIFFS：
+#
+#   python $IDF_PATH/components/spiffs/spiffsgen.py \
+#       0x4F0000 spiffs_image spiffs.bin
+#
+#   esptool.py -p COM3 write_flash 0x310000 spiffs.bin
+#
+# 或者直接使用 idf.py:
+#   idf.py -p COM3 spiffs_image flash

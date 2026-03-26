@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32-S3 RTL-SDR</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 16px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .logo { font-size: 40px; text-align: center; margin-bottom: 12px; }
+    h1 { font-size: 20px; color: #58a6ff; text-align: center; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: #8b949e; text-align: center; margin-bottom: 32px; }
+    .menu { display: flex; flex-direction: column; gap: 14px; }
+    .menu-item {
+      display: flex; align-items: center; gap: 16px;
+      padding: 16px 20px; background: #0d1117;
+      border: 1px solid #30363d; border-radius: 12px;
+      text-decoration: none; color: #e6edf3; transition: all 0.15s;
+    }
+    .menu-item:hover { border-color: #58a6ff; background: #161b22; transform: translateX(4px); }
+    .menu-icon { font-size: 28px; flex-shrink: 0; width: 44px; text-align: center; }
+    .menu-text { flex: 1; }
+    .menu-title { font-size: 15px; font-weight: 600; color: #e6edf3; margin-bottom: 3px; }
+    .menu-desc { font-size: 12px; color: #8b949e; }
+    .menu-arrow { color: #30363d; font-size: 18px; transition: color 0.15s; }
+    .menu-item:hover .menu-arrow { color: #58a6ff; }
+    .footer { margin-top: 28px; text-align: center; font-size: 12px; color: #8b949e; }
+    .status-row {
+      display: flex; justify-content: center; gap: 16px;
+      margin-top: 8px; font-size: 12px; color: #8b949e;
+    }
+    .dot {
+      display: inline-block; width: 7px; height: 7px;
+      border-radius: 50%; background: #f85149;
+      margin-right: 4px; vertical-align: middle;
+    }
+    .dot.ok { background: #3fb950; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">&#128225;</div>
+  <h1>ESP32-S3 RTL-SDR</h1>
+  <p class="subtitle">&#22522;&#20110; RTL2832U + R820T2 &#30340;&#22810;&#21151;&#33021;&#26080;&#32447;&#30005;&#25509;&#25910;&#24179;&#21488;</p>
+
+  <div class="menu">
+    <a class="menu-item" href="/adsb/">
+      <div class="menu-icon">&#9992;</div>
+      <div class="menu-text">
+        <div class="menu-title">ADS-B &#39134;&#26426;&#36861;&#36394;</div>
+        <div class="menu-desc">&#23454;&#26102;&#25509;&#25910; 1090 MHz &#39134;&#26426;&#24191;&#25773;&#65292;&#26174;&#31034;&#20301;&#32622;&#12289;&#39640;&#24230;&#12289;&#36895;&#24230;</div>
+      </div>
+      <div class="menu-arrow">&#8250;</div>
+    </a>
+
+    <a class="menu-item" href="/fm/">
+      <div class="menu-icon">&#128251;</div>
+      <div class="menu-text">
+        <div class="menu-title">FM &#25910;&#38376;&#26426;</div>
+        <div class="menu-desc">87.5 &#8211; 108.0 MHz &#35843;&#39057;&#24191;&#25773;&#65292;&#27983;&#35272;&#22120;&#30452;&#25509;&#25773;&#25918;&#38899;&#39057;</div>
+      </div>
+      <div class="menu-arrow">&#8250;</div>
+    </a>
+
+    <a class="menu-item" href="/spectrum/">
+      <div class="menu-icon">&#128202;</div>
+      <div class="menu-text">
+        <div class="menu-title">&#39057;&#35889;&#20179;</div>
+        <div class="menu-desc">500 kHz &#8211; 1750 MHz &#23454;&#26102;&#39057;&#35889;&#20998;&#26512;&#65292;&#25903;&#25345;&#29895;&#24067;&#22270;&#26174;&#31034;</div>
+      </div>
+      <div class="menu-arrow">&#8250;</div>
+    </a>
+
+    <a class="menu-item" href="/ais/">
+      <div class="menu-icon">&#9875;</div>
+      <div class="menu-text">
+        <div class="menu-title">AIS &#33337;&#33235;&#30417;&#25511;</div>
+        <div class="menu-desc">162 MHz VHF &#33337;&#33235;&#33258;&#21160;&#35782;&#21035;&#65292;&#28207;&#21475;&#27827;&#36947;&#23454;&#26102;&#33337;&#20301;&#36861;&#36394;</div>
+      </div>
+      <div class="menu-arrow">&#8250;</div>
+    </a>
+
+    <a class="menu-item" href="/drone/">
+      <div class="menu-icon">&#128641;</div>
+      <div class="menu-text">
+        <div class="menu-title">&#26080;&#20154;&#26426;&#30417;&#27979;&#21578;&#35686;</div>
+        <div class="menu-desc">&#25195;&#25551; 433/868/915/1090 MHz&#65292;&#26816;&#27979;&#26080;&#20154;&#26426;&#20449;&#21495;&#24182;&#20998;&#32423;&#21578;&#35686;</div>
+      </div>
+      <div class="menu-arrow">&#8250;</div>
+    </a>
+  </div>
+
+  <div class="footer">
+    ESP32-S3 &middot; RTL-SDR USB Host
+    <div class="status-row" id="status-row">
+      <span><span class="dot" id="rtl-dot"></span><span id="rtl-status">&#26816;&#27979;&#20013;...</span></span>
+      <span>IP: <strong id="ip-addr">192.168.4.1</strong></span>
+    </div>
+  </div>
+</div>
+
+<script>
+(async () => {
+  try {
+    await fetch('/api/stats');
+    document.getElementById('rtl-dot').className = 'dot ok';
+    document.getElementById('rtl-status').textContent = 'RTL-SDR \u5df2\u8fde\u63a5';
+  } catch(e) {
+    document.getElementById('rtl-status').textContent = 'RTL-SDR \u672a\u8fde\u63a5';
+  }
+  document.getElementById('ip-addr').textContent = window.location.hostname;
+})();
+</script>
+</body>
+</html>

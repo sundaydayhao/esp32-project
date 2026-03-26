@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32 音乐播放器</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Inline fallback: ensure album art never overflows regardless of CSS load */
+    .album-art { width:90px!important; height:90px!important; max-width:90px!important; max-height:90px!important; overflow:hidden!important; }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- ── Header ── -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🎵</span>
+        <span class="logo-text">ESP32 Music Player</span>
+      </div>
+      <div class="wifi-status" id="wifiStatus">
+        <span class="dot" id="connDot"></span>
+        <span id="connLabel">连接中...</span>
+      </div>
+    </header>
+
+    <main class="main">
+
+      <!-- ── Now Playing ── -->
+      <section class="now-playing card">
+        <!-- Album art: pure CSS disc, no SVG -->
+        <div class="album-art" id="albumArt">
+          <div class="disc-inner">
+            <span class="disc-note">🎵</span>
+          </div>
+          <div class="vinyl-spin" id="vinylSpin"></div>
+        </div>
+
+        <div class="track-info">
+          <div class="track-title" id="trackTitle">未播放</div>
+          <div class="track-artist" id="trackArtist">—</div>
+          <div class="track-meta" id="trackMeta"></div>
+
+          <!-- Progress bar -->
+          <div class="progress-wrap">
+            <span class="time" id="timePos">0:00</span>
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <span class="time" id="timeDur">—</span>
+          </div>
+
+          <!-- Controls -->
+          <div class="controls">
+            <button class="btn-ctrl" id="btnStop"  title="停止">⏹</button>
+            <button class="btn-ctrl btn-play" id="btnPlay" title="播放/暂停">▶</button>
+            <button class="btn-ctrl" id="btnMute" title="静音">🔊</button>
+          </div>
+
+          <!-- Volume -->
+          <div class="volume-wrap">
+            <span class="vol-icon">🔈</span>
+            <input type="range" id="volumeSlider" min="0" max="100" value="80" class="slider" />
+            <span class="vol-icon">🔊</span>
+            <span class="vol-val" id="volVal">80</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Spectrum ── -->
+      <section class="spectrum-section card">
+        <div class="section-title">频谱分析</div>
+        <canvas id="spectrumCanvas" class="spectrum-canvas"></canvas>
+        <div class="freq-labels">
+          <span>20Hz</span><span>50Hz</span><span>100Hz</span>
+          <span>200Hz</span><span>500Hz</span><span>1kHz</span>
+          <span>2kHz</span><span>5kHz</span><span>10kHz</span><span>20kHz</span>
+        </div>
+      </section>
+
+      <!-- ── Playlist / Add Track ── -->
+      <section class="playlist-section card">
+        <div class="section-title">播放列表</div>
+
+        <div class="add-track">
+          <div class="input-row">
+            <input type="text" id="urlInput" placeholder="输入 MP3 URL 或本地路径 (如 /spiffs/song.mp3)" class="text-input" />
+          </div>
+          <div class="input-row">
+            <input type="text" id="titleInput"  placeholder="歌曲名称（可选）" class="text-input half" />
+            <input type="text" id="artistInput" placeholder="艺术家（可选）"   class="text-input half" />
+          </div>
+          <button class="btn-add" id="btnAdd">▶ 立即播放</button>
+        </div>
+
+        <div class="local-files">
+          <div class="local-title">
+            本地文件 (SPIFFS)
+            <button class="btn-refresh" id="btnRefresh" title="刷新">↻</button>
+          </div>
+          <ul class="file-list" id="fileList">
+            <li class="file-empty">加载中...</li>
+          </ul>
+        </div>
+
+        <div class="local-title" style="margin-top:16px">网络电台预设</div>
+        <ul class="file-list" id="radioList"></ul>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

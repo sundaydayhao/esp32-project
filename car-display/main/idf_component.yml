@@ -1,0 +1,15 @@
+## IDF Component Manager Manifest File
+dependencies:
+  idf: ">=5.0.0"
+  
+  ## LVGL graphics library
+  lvgl/lvgl:
+    version: "~8.3.0"
+    rules:
+      - if: "idf_version >=5.0"
+  
+  ## ESP LVGL Port (display + touch integration)
+  espressif/esp_lvgl_port:
+    version: "~1.4.0"
+    rules:
+      - if: "idf_version >=5.0"

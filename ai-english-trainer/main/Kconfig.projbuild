@@ -1,0 +1,128 @@
+menu "AI English Trainer Configuration"
+
+    menu "WiFi Settings"
+        config WIFI_SSID
+            string "WiFi SSID"
+            default "MyWiFi"
+            help
+                SSID (network name) of the WiFi network to connect to.
+
+        config WIFI_PASSWORD
+            string "WiFi Password"
+            default "password"
+            help
+                WiFi password (WPA/WPA2).
+
+        config WIFI_MAXIMUM_RETRY
+            int "Maximum WiFi retry count"
+            default 5
+            help
+                Maximum number of WiFi connection retries before giving up.
+    endmenu
+
+    menu "OpenAI Settings"
+        config OPENAI_API_KEY
+            string "OpenAI API Key"
+            default "sk-your-api-key-here"
+            help
+                Your OpenAI API key. Get it from https://platform.openai.com/api-keys
+
+        config OPENAI_GPT_MODEL
+            string "GPT Model"
+            default "gpt-4o-mini"
+            help
+                OpenAI GPT model to use. Options: gpt-4o-mini, gpt-4o, gpt-4-turbo
+
+        config OPENAI_TTS_VOICE
+            string "TTS Voice"
+            default "nova"
+            help
+                OpenAI TTS voice. Options: alloy, echo, fable, onyx, nova, shimmer
+                Recommended for children: nova (warm, friendly female voice)
+
+        config OPENAI_TTS_SPEED
+            string "TTS Speed"
+            default "0.9"
+            help
+                TTS playback speed (0.25 to 4.0). Slightly slower for children.
+    endmenu
+
+    menu "Hardware Pin Configuration"
+        comment "I2S Microphone (INMP441)"
+        config I2S_MIC_SCK_PIN
+            int "Microphone SCK (Bit Clock) GPIO"
+            default 14
+            range 0 48
+
+        config I2S_MIC_WS_PIN
+            int "Microphone WS (Word Select/LRC) GPIO"
+            default 15
+            range 0 48
+
+        config I2S_MIC_SD_PIN
+            int "Microphone SD (Data) GPIO"
+            default 16
+            range 0 48
+
+        comment "I2S Speaker (MAX98357A)"
+        config I2S_SPK_BCLK_PIN
+            int "Speaker BCLK (Bit Clock) GPIO"
+            default 17
+            range 0 48
+
+        config I2S_SPK_LRC_PIN
+            int "Speaker LRC (Word Select) GPIO"
+            default 18
+            range 0 48
+
+        config I2S_SPK_DIN_PIN
+            int "Speaker DIN (Data) GPIO"
+            default 8
+            range 0 48
+
+        comment "Button and LED"
+        config BUTTON_GPIO
+            int "Push-to-Talk Button GPIO"
+            default 0
+            range 0 48
+            help
+                GPIO for push-to-talk button. Default 0 = BOOT button on DevKit.
+
+        config LED_GPIO
+            int "WS2812 RGB LED GPIO"
+            default 48
+            range 0 48
+            help
+                GPIO for WS2812 RGB LED. GPIO 48 on ESP32-S3-DevKitC-1.
+    endmenu
+
+    menu "Audio Settings"
+        config AUDIO_SAMPLE_RATE_MIC
+            int "Microphone Sample Rate (Hz)"
+            default 16000
+            help
+                Sample rate for microphone capture. 16000 Hz recommended for Whisper API.
+
+        config AUDIO_MAX_RECORD_SECONDS
+            int "Maximum Recording Duration (seconds)"
+            default 10
+            range 3 30
+            help
+                Maximum duration for a single recording session.
+
+        config AUDIO_SILENCE_THRESHOLD
+            int "Silence Detection Threshold"
+            default 500
+            range 100 5000
+            help
+                RMS amplitude threshold below which audio is considered silence.
+
+        config AUDIO_SILENCE_DURATION_MS
+            int "Auto-stop Silence Duration (ms)"
+            default 1500
+            range 500 5000
+            help
+                Duration of silence (ms) before auto-stopping recording.
+    endmenu
+
+endmenu

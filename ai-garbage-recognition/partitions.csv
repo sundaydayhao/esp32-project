@@ -1,0 +1,10 @@
+# ESP32-S3 分区表 / Partition Table
+# AI 智能垃圾分类系统
+# 总 Flash: 8MB
+#
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x300000,
+model,    data, spiffs,  0x310000,0x200000,
+storage,  data, spiffs,  0x510000, 0x2F0000,

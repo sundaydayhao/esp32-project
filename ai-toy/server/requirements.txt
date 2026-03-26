@@ -1,0 +1,32 @@
+# AI玩具后端服务器依赖
+
+# WebSocket服务器
+websockets>=12.0
+
+# HTTP客户端 (用于调用各种AI API)
+aiohttp>=3.9.0
+
+# JSON处理 (Python内置，无需安装)
+
+# ---- TTS 依赖 ----
+# Edge TTS (微软免费TTS，推荐)
+edge-tts>=6.1.9
+
+# 音频格式转换 (MP3 → PCM)
+pydub>=0.25.1
+# 注意: pydub需要ffmpeg，请安装:
+# Windows: https://ffmpeg.org/download.html
+# Linux: sudo apt install ffmpeg
+# macOS: brew install ffmpeg
+
+# ---- ASR 依赖 (按需安装) ----
+# OpenAI Whisper (本地ASR，可选)
+# openai-whisper>=20231117
+# numpy>=1.24.0
+
+# ---- 可选依赖 ----
+# 如果使用OpenAI API
+# openai>=1.0.0
+
+# 日志美化 (可选)
+# colorlog>=6.7.0

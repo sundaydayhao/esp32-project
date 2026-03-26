@@ -1,0 +1,18 @@
+# WiFi AP configuration
+CONFIG_ESP_WIFI_SSID="GameStick"
+CONFIG_ESP_WIFI_PASSWORD="12345678"
+
+# Enable WebSocket support in HTTP server
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# Increase HTTP server max URI handlers
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+
+# Flash size
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# FreeRTOS tick rate
+CONFIG_FREERTOS_HZ=1000
+
+# Log level
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

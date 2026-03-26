@@ -1,0 +1,13 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "wifi_ap.c"
+        "joystick.c"
+        "http_server.c"
+    INCLUDE_DIRS
+        "."
+    EMBED_TXTFILES
+        "web/index.html"
+        "web/tetris.html"
+        "web/game2048.html"
+)

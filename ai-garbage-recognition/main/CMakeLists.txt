@@ -1,0 +1,25 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+        "camera_handler.cpp"
+        "garbage_classifier.cpp"
+        "motor_control.cpp"
+        "audio_player.cpp"
+        "led_indicator.cpp"
+        "wifi_manager.cpp"
+        "online_classifier.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp_camera
+        driver
+        esp_timer
+        freertos
+        log
+        nvs_flash
+        esp_psram
+        esp_wifi
+        esp_netif
+        esp_event
+        esp_http_client
+)

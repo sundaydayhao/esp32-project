@@ -1,0 +1,82 @@
+menu "Music Player Configuration"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "your_wifi_ssid"
+        help
+            SSID (network name) for the WiFi network to connect to.
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default "your_wifi_password"
+        help
+            WiFi password (WPA or WPA2) for the WiFi network.
+
+    config WIFI_MAXIMUM_RETRY
+        int "Maximum retry count"
+        default 5
+        help
+            Set the Maximum retry to avoid station reconnecting to the AP
+            unlimited when the AP is really inexistent.
+
+    config I2S_BCK_PIN
+        int "I2S BCK (Bit Clock) GPIO"
+        default 14
+        help
+            GPIO number for I2S bit clock signal.
+
+    config I2S_WS_PIN
+        int "I2S WS (Word Select / LRCK) GPIO"
+        default 15
+        help
+            GPIO number for I2S word select (left/right clock) signal.
+
+    config I2S_DOUT_PIN
+        int "I2S DOUT (Data Out) GPIO"
+        default 16
+        help
+            GPIO number for I2S data output signal.
+
+    config I2S_MCLK_PIN
+        int "I2S MCLK GPIO (-1 to disable)"
+        default -1
+        help
+            GPIO number for I2S master clock. Set to -1 if not used.
+
+    config AUDIO_SAMPLE_RATE
+        int "Audio Sample Rate (Hz)"
+        default 44100
+        help
+            Audio sample rate in Hz. Common values: 44100, 48000, 22050.
+
+    config AUDIO_BUFFER_SIZE
+        int "Audio Decode Buffer Size (bytes)"
+        default 4096
+        help
+            Size of the audio decode buffer in bytes.
+
+    config HTTP_SERVER_PORT
+        int "HTTP Server Port"
+        default 80
+        help
+            Port number for the built-in HTTP server.
+
+    config SPIFFS_BASE_PATH
+        string "SPIFFS Mount Point"
+        default "/spiffs"
+        help
+            Mount point for the SPIFFS filesystem.
+
+    config MAX_WS_CLIENTS
+        int "Maximum WebSocket Clients"
+        default 4
+        help
+            Maximum number of simultaneous WebSocket clients.
+
+    config FFT_SIZE
+        int "FFT Size"
+        default 512
+        help
+            Number of samples for FFT computation. Must be power of 2.
+
+endmenu

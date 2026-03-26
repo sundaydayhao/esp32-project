@@ -1,0 +1,26 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+        "audio_codec.cpp"
+        "wifi_manager.cpp"
+        "websocket_client.cpp"
+        "ai_assistant.cpp"
+        "led_indicator.cpp"
+        "button_handler.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp_wifi
+        esp_event
+        esp_netif
+        nvs_flash
+        esp_websocket_client
+        driver
+        esp_timer
+        freertos
+        log
+        json
+        mbedtls
+        spiffs
+        esp_http_client
+)

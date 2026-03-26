@@ -1,0 +1,8 @@
+## IDF Component Manager 依赖配置
+## ESP32-Camera 组件依赖
+
+dependencies:
+  espressif/esp32-camera:
+    version: ">=2.0.0"
+  idf:
+    version: ">=5.0.0"

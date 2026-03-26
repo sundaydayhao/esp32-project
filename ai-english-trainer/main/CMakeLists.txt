@@ -1,0 +1,27 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "audio_capture.c"
+        "audio_playback.c"
+        "wifi_manager.c"
+        "openai_client.c"
+        "button_handler.c"
+        "led_indicator.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        driver
+        esp_wifi
+        esp_event
+        esp_netif
+        nvs_flash
+        esp_http_client
+        esp_tls
+        json
+        led_strip
+        freertos
+        log
+        heap
+        esp_timer
+        esp_system
+)

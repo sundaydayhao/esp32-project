@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2048 – ESP32 GameStick</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d0d1a;
+    color: #e0e0e0;
+    font-family: 'Arial', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+  }
+
+  h1 {
+    font-size: 3em;
+    font-weight: 900;
+    color: #f7c948;
+    letter-spacing: 2px;
+    text-shadow: 0 0 20px rgba(247,201,72,0.5);
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .score-box {
+    background: #16213e;
+    border: 1px solid #2a2a5a;
+    border-radius: 8px;
+    padding: 8px 18px;
+    text-align: center;
+    min-width: 90px;
+  }
+  .score-box .lbl { font-size: 0.7em; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  .score-box .num { font-size: 1.5em; font-weight: bold; color: #f7c948; }
+
+  .btn {
+    background: #f7c948;
+    color: #0d0d1a;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: bold;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: #e5b830; }
+  .btn.red { background: #e94560; color: #fff; }
+  .btn.red:hover { background: #c73652; }
+
+  .grid-bg {
+    background: #0f3460;
+    border-radius: 12px;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 10px;
+    width: 460px;
+    height: 460px;
+    box-shadow: 0 0 30px rgba(15,52,96,0.8);
+  }
+
+  .cell {
+    background: #16213e;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+    font-weight: 900;
+    transition: background 0.08s, color 0.08s;
+    user-select: none;
+  }
+
+  .t2    { background: #eee4da; color: #776e65; }
+  .t4    { background: #ede0c8; color: #776e65; }
+  .t8    { background: #f2b179; color: #f9f6f2; }
+  .t16   { background: #f59563; color: #f9f6f2; }
+  .t32   { background: #f67c5f; color: #f9f6f2; }
+  .t64   { background: #f65e3b; color: #f9f6f2; }
+  .t128  { background: #edcf72; color: #f9f6f2; font-size: 1.6em; }
+  .t256  { background: #edcc61; color: #f9f6f2; font-size: 1.6em; }
+  .t512  { background: #edc850; color: #f9f6f2; font-size: 1.6em; }
+  .t1024 { background: #edc53f; color: #f9f6f2; font-size: 1.3em; }
+  .t2048 { background: #edc22e; color: #f9f6f2; font-size: 1.3em;
+           box-shadow: 0 0 20px rgba(237,194,46,0.7); }
+  .tbig  { background: #3c3a32; color: #f9f6f2; font-size: 1em; }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .ws-badge {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 0.8em;
+    font-weight: bold;
+  }
+  .ws-badge.on  { background: #1a4a2e; color: #52b788; }
+  .ws-badge.off { background: #3a1020; color: #e94560; }
+
+  .hint { font-size: 0.78em; color: #555; }
+
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.82);
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  .overlay.show { display: flex; }
+
+  .modal {
+    background: #16213e;
+    border-radius: 14px;
+    padding: 36px 48px;
+    text-align: center;
+  }
+  .modal.win  { border: 2px solid #f7c948; }
+  .modal.lose { border: 2px solid #e94560; }
+  .modal h2   { font-size: 2.2em; margin-bottom: 12px; }
+  .modal.win  h2 { color: #f7c948; }
+  .modal.lose h2 { color: #e94560; }
+  .modal p    { font-size: 1.1em; margin-bottom: 24px; color: #ccc; }
+  .modal .btns { display: flex; gap: 12px; justify-content: center; }
+
+  .back-link {
+    font-size: 0.8em;
+    color: #555;
+    text-decoration: none;
+  }
+  .back-link:hover { color: #f7c948; }
+</style>
+</head>
+<body>
+
+<h1>2048</h1>
+
+<div class="header">
+  <div class="score-box">
+    <div class="lbl">分数</div>
+    <div class="num" id="score">0</div>
+  </div>
+  <div class="score-box">
+    <div class="lbl">最高分</div>
+    <div class="num" id="best">0</div>
+  </div>
+  <button class="btn" onclick="newGame()">新游戏</button>
+</div>
+
+<div class="grid-bg" id="grid"></div>
+
+<div class="status-row">
+  <span class="ws-badge off" id="ws-badge">手柄: 未连接</span>
+  <span class="hint">↑↓←→ 移动方块</span>
+</div>
+
+<a class="back-link" href="/">← 返回游戏选择</a>
+
+<!-- Win overlay -->
+<div class="overlay" id="win-overlay">
+  <div class="modal win">
+    <h2>🎉 你赢了!</h2>
+    <p>达到了 <strong>2048</strong>！</p>
+    <div class="btns">
+      <button class="btn" onclick="continueGame()">继续挑战</button>
+      <button class="btn red" onclick="newGame()">新游戏</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lose overlay -->
+<div class="overlay" id="lose-overlay">
+  <div class="modal lose">
+    <h2>游戏结束</h2>
+    <p>最终分数：<strong id="final-score">0</strong></p>
+    <button class="btn" onclick="newGame()">重新开始</button>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   Game state
+   ===================================================================== */
+const SIZE = 4;
+let grid, score, bestScore, gameOver, wonOnce;
+
+bestScore = 0;
+
+function newGame() {
+  grid     = Array.from({length: SIZE}, () => new Array(SIZE).fill(0));
+  score    = 0;
+  gameOver = false;
+  wonOnce  = false;
+  document.getElementById('win-overlay').classList.remove('show');
+  document.getElementById('lose-overlay').classList.remove('show');
+  addTile();
+  addTile();
+  render();
+}
+
+function continueGame() {
+  wonOnce = true;
+  document.getElementById('win-overlay').classList.remove('show');
+}
+
+/* =====================================================================
+   Tile helpers
+   ===================================================================== */
+function emptyCells() {
+  const cells = [];
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (grid[r][c] === 0) cells.push({r, c});
+  return cells;
+}
+
+function addTile() {
+  const cells = emptyCells();
+  if (!cells.length) return;
+  const {r, c} = cells[Math.floor(Math.random() * cells.length)];
+  grid[r][c] = Math.random() < 0.9 ? 2 : 4;
+}
+
+/* =====================================================================
+   Slide logic (operates on a single row, left-to-right)
+   ===================================================================== */
+function slideRow(row) {
+  // Compact non-zero values
+  let arr = row.filter(v => v !== 0);
+  let gained = 0;
+  // Merge adjacent equal values
+  for (let i = 0; i < arr.length - 1; i++) {
+    if (arr[i] === arr[i + 1]) {
+      arr[i] *= 2;
+      gained += arr[i];
+      arr[i + 1] = 0;
+    }
+  }
+  arr = arr.filter(v => v !== 0);
+  while (arr.length < SIZE) arr.push(0);
+  return {row: arr, gained};
+}
+
+/* =====================================================================
+   Move in four directions
+   ===================================================================== */
+function move(dir) {
+  if (gameOver) return;
+
+  const prev = JSON.stringify(grid);
+  let totalGained = 0;
+
+  if (dir === 'LEFT') {
+    for (let r = 0; r < SIZE; r++) {
+      const {row, gained} = slideRow(grid[r]);
+      grid[r] = row;
+      totalGained += gained;
+    }
+  } else if (dir === 'RIGHT') {
+    for (let r = 0; r < SIZE; r++) {
+      const {row, gained} = slideRow([...grid[r]].reverse());
+      grid[r] = row.reverse();
+      totalGained += gained;
+    }
+  } else if (dir === 'UP') {
+    for (let c = 0; c < SIZE; c++) {
+      const col = grid.map(row => row[c]);
+      const {row, gained} = slideRow(col);
+      for (let r = 0; r < SIZE; r++) grid[r][c] = row[r];
+      totalGained += gained;
+    }
+  } else if (dir === 'DOWN') {
+    for (let c = 0; c < SIZE; c++) {
+      const col = grid.map(row => row[c]).reverse();
+      const {row, gained} = slideRow(col);
+      const rev = row.reverse();
+      for (let r = 0; r < SIZE; r++) grid[r][c] = rev[r];
+      totalGained += gained;
+    }
+  }
+
+  const moved = JSON.stringify(grid) !== prev;
+  if (!moved) return;
+
+  score += totalGained;
+  if (score > bestScore) {
+    bestScore = score;
+    document.getElementById('best').textContent = bestScore;
+  }
+  document.getElementById('score').textContent = score;
+
+  // Check for 2048 win
+  if (!wonOnce) {
+    for (let r = 0; r < SIZE; r++)
+      for (let c = 0; c < SIZE; c++)
+        if (grid[r][c] === 2048) {
+          document.getElementById('win-overlay').classList.add('show');
+          return;
+        }
+  }
+
+  addTile();
+  render();
+
+  // Check for loss
+  if (!canMove()) {
+    gameOver = true;
+    document.getElementById('final-score').textContent = score;
+    setTimeout(() => document.getElementById('lose-overlay').classList.add('show'), 300);
+  }
+}
+
+function canMove() {
+  if (emptyCells().length > 0) return true;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const v = grid[r][c];
+      if (c < SIZE - 1 && grid[r][c + 1] === v) return true;
+      if (r < SIZE - 1 && grid[r + 1][c] === v) return true;
+    }
+  }
+  return false;
+}
+
+/* =====================================================================
+   Rendering
+   ===================================================================== */
+function tileClass(v) {
+  if (!v) return '';
+  if (v <= 2048) return 't' + v;
+  return 'tbig';
+}
+
+function render() {
+  const gridEl = document.getElementById('grid');
+  gridEl.innerHTML = '';
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const v    = grid[r][c];
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + tileClass(v);
+      if (v) cell.textContent = v;
+      gridEl.appendChild(cell);
+    }
+  }
+}
+
+/* =====================================================================
+   Input
+   ===================================================================== */
+function handleDir(dir) {
+  if (['UP','DOWN','LEFT','RIGHT'].includes(dir)) {
+    move(dir);
+  }
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  const map = {
+    ArrowUp:    'UP',
+    ArrowDown:  'DOWN',
+    ArrowLeft:  'LEFT',
+    ArrowRight: 'RIGHT',
+  };
+  if (map[e.key]) { e.preventDefault(); handleDir(map[e.key]); }
+});
+
+// Touch / swipe support
+let touchStartX = 0, touchStartY = 0;
+document.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, {passive: true});
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    handleDir(dx > 0 ? 'RIGHT' : 'LEFT');
+  } else {
+    handleDir(dy > 0 ? 'DOWN' : 'UP');
+  }
+}, {passive: true});
+
+/* =====================================================================
+   WebSocket
+   ===================================================================== */
+let ws;
+function connectWS() {
+  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws.onopen = () => {
+    const b = document.getElementById('ws-badge');
+    b.textContent = '手柄: 已连接';
+    b.className   = 'ws-badge on';
+  };
+  ws.onclose = () => {
+    const b = document.getElementById('ws-badge');
+    b.textContent = '手柄: 未连接';
+    b.className   = 'ws-badge off';
+    setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.dir && d.dir !== 'NONE' && d.dir !== 'BUTTON') {
+        handleDir(d.dir);
+      }
+    } catch (_) {}
+  };
+}
+
+/* =====================================================================
+   Boot
+   ===================================================================== */
+newGame();
+connectWS();
+</script>
+</body>
+</html>

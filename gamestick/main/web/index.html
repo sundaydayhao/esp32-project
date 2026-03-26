@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 GameStick</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d0d1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+  }
+
+  .logo {
+    text-align: center;
+  }
+  .logo h1 {
+    font-size: 3em;
+    background: linear-gradient(135deg, #e94560, #f7c948);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 2px;
+  }
+  .logo p {
+    color: #888;
+    margin-top: 8px;
+    font-size: 1em;
+  }
+
+  .games {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .game-card {
+    background: #16213e;
+    border: 2px solid #1a1a3e;
+    border-radius: 16px;
+    padding: 30px 40px;
+    text-align: center;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    width: 200px;
+  }
+  .game-card:hover {
+    transform: translateY(-6px);
+    border-color: #e94560;
+    box-shadow: 0 8px 30px rgba(233, 69, 96, 0.3);
+  }
+  .game-card.blue:hover {
+    border-color: #f7c948;
+    box-shadow: 0 8px 30px rgba(247, 201, 72, 0.3);
+  }
+
+  .game-icon {
+    font-size: 4em;
+    margin-bottom: 15px;
+    display: block;
+  }
+  .game-title {
+    font-size: 1.4em;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+  .game-card:first-child .game-title { color: #e94560; }
+  .game-card.blue .game-title { color: #f7c948; }
+  .game-desc {
+    font-size: 0.85em;
+    color: #888;
+    line-height: 1.5;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #16213e;
+    padding: 10px 20px;
+    border-radius: 30px;
+    font-size: 0.85em;
+  }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #e94560;
+    animation: pulse 1.5s infinite;
+  }
+  .dot.on { background: #52b788; animation: none; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  .controls {
+    background: #16213e;
+    border-radius: 12px;
+    padding: 15px 25px;
+    font-size: 0.82em;
+    color: #888;
+    text-align: center;
+    line-height: 2;
+  }
+  .controls strong { color: #e0e0e0; }
+</style>
+</head>
+<body>
+
+<div class="logo">
+  <h1>🎮 ESP32 GameStick</h1>
+  <p>使用摇杆控制网页游戏</p>
+</div>
+
+<div class="games">
+  <a class="game-card" href="/tetris">
+    <span class="game-icon">🟦</span>
+    <div class="game-title">俄罗斯方块</div>
+    <div class="game-desc">经典消行游戏<br>↑旋转 ←→移动<br>↓加速 按钮硬降</div>
+  </a>
+  <a class="game-card blue" href="/2048">
+    <span class="game-icon">🔢</span>
+    <div class="game-title">2048</div>
+    <div class="game-desc">数字合并游戏<br>↑↓←→ 滑动方块<br>合并到 2048 获胜</div>
+  </a>
+</div>
+
+<div class="status-bar">
+  <div class="dot" id="dot"></div>
+  <span id="status-text">等待手柄连接…</span>
+</div>
+
+<div class="controls">
+  <strong>连接方式：</strong>
+  WiFi: <strong>GameStick</strong> &nbsp;|&nbsp;
+  密码: <strong>12345678</strong> &nbsp;|&nbsp;
+  地址: <strong>http://192.168.4.1</strong>
+</div>
+
+<script>
+  let ws;
+  function connect() {
+    ws = new WebSocket('ws://' + location.host + '/ws');
+    ws.onopen = () => {
+      document.getElementById('dot').className = 'dot on';
+      document.getElementById('status-text').textContent = '手柄已连接';
+    };
+    ws.onclose = () => {
+      document.getElementById('dot').className = 'dot';
+      document.getElementById('status-text').textContent = '等待手柄连接…';
+      setTimeout(connect, 3000);
+    };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.dir === 'BUTTON') location.href = '/tetris';
+      } catch (_) {}
+    };
+  }
+  connect();
+</script>
+</body>
+</html>

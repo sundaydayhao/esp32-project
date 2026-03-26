@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌙 AI 睡前故事机</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">🌙</span>
+                    <span class="logo-text">AI 睡前故事机</span>
+                </div>
+                <div class="status-bar">
+                    <div class="status-dot" id="serverStatus"></div>
+                    <span id="serverStatusText">未连接</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="main">
+            <!-- 左侧：故事生成面板 -->
+            <section class="panel story-panel">
+                <h2 class="panel-title">✨ 生成故事</h2>
+
+                <!-- 关键词输入 -->
+                <div class="input-group">
+                    <label class="input-label">故事关键词</label>
+                    <div class="keyword-input-area">
+                        <input type="text" id="keywordInput" class="keyword-input"
+                               placeholder="输入关键词，如：恐龙、太空、公主..."
+                               maxlength="50">
+                        <button class="btn btn-add" onclick="addKeyword()">添加</button>
+                    </div>
+                    <div class="keyword-tags" id="keywordTags"></div>
+                </div>
+
+                <!-- 快速关键词 -->
+                <div class="quick-keywords">
+                    <span class="quick-label">快速选择：</span>
+                    <div class="quick-tags">
+                        <button class="quick-tag" onclick="quickKeyword('恐龙')">🦕 恐龙</button>
+                        <button class="quick-tag" onclick="quickKeyword('太空')">🚀 太空</button>
+                        <button class="quick-tag" onclick="quickKeyword('公主')">👸 公主</button>
+                        <button class="quick-tag" onclick="quickKeyword('森林')">🌲 森林</button>
+                        <button class="quick-tag" onclick="quickKeyword('海洋')">🐬 海洋</button>
+                        <button class="quick-tag" onclick="quickKeyword('魔法')">✨ 魔法</button>
+                        <button class="quick-tag" onclick="quickKeyword('独角兽')">🦄 独角兽</button>
+                        <button class="quick-tag" onclick="quickKeyword('机器人')">🤖 机器人</button>
+                        <button class="quick-tag" onclick="quickKeyword('兔子')">🐰 兔子</button>
+                        <button class="quick-tag" onclick="quickKeyword('月亮')">🌙 月亮</button>
+                    </div>
+                </div>
+
+                <!-- TTS 声音选择 -->
+                <div class="input-group">
+                    <label class="input-label">朗读声音</label>
+                    <select id="voiceSelect" class="select-input">
+                        <option value="zh-CN-XiaoxiaoNeural">晓晓 - 温柔女声（推荐）</option>
+                        <option value="zh-CN-XiaoyiNeural">晓伊 - 活泼女声</option>
+                        <option value="zh-CN-YunxiNeural">云希 - 男声</option>
+                        <option value="zh-CN-XiaomoNeural">晓墨 - 温柔女声</option>
+                        <option value="zh-CN-XiaohanNeural">晓涵 - 女声</option>
+                    </select>
+                </div>
+
+                <!-- 生成按钮 -->
+                <div class="action-buttons">
+                    <button class="btn btn-primary" id="generateBtn" onclick="generateStory()">
+                        <span class="btn-icon">🎭</span>
+                        生成故事
+                    </button>
+                    <button class="btn btn-secondary" id="stopBtn" onclick="stopStory()" disabled>
+                        <span class="btn-icon">⏹</span>
+                        停止
+                    </button>
+                    <button class="btn btn-outline" onclick="clearAll()">
+                        <span class="btn-icon">🗑</span>
+                        清除
+                    </button>
+                </div>
+
+                <!-- 进度条 -->
+                <div class="progress-container" id="progressContainer" style="display:none">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <span class="progress-text" id="progressText">正在生成...</span>
+                </div>
+            </section>
+
+            <!-- 中间：故事显示区 -->
+            <section class="panel story-display-panel">
+                <div class="story-header">
+                    <h2 class="panel-title">📖 故事内容</h2>
+                    <div class="story-actions">
+                        <button class="btn-icon-only" onclick="copyStory()" title="复制故事">📋</button>
+                        <button class="btn-icon-only" onclick="downloadStory()" title="下载故事">💾</button>
+                        <button class="btn-icon-only" onclick="playTTS()" title="播放语音" id="ttsBtn">🔊</button>
+                    </div>
+                </div>
+
+                <!-- 插图显示 -->
+                <div class="illustration-container" id="illustrationContainer">
+                    <div class="illustration-placeholder">
+                        <span class="placeholder-icon">🌙</span>
+                        <p>故事插图将在这里显示</p>
+                    </div>
+                    <img id="storyIllustration" class="story-illustration" style="display:none" alt="故事插图">
+                </div>
+
+                <!-- 故事文字 -->
+                <div class="story-text-container">
+                    <div class="story-text" id="storyText">
+                        <p class="story-placeholder">在这里，AI 将为孩子创作专属的睡前故事...</p>
+                    </div>
+                </div>
+
+                <!-- 音频播放器 -->
+                <div class="audio-player" id="audioPlayer" style="display:none">
+                    <audio id="audioElement" controls></audio>
+                </div>
+            </section>
+
+            <!-- 右侧：设备管理 -->
+            <section class="panel device-panel">
+                <h2 class="panel-title">📱 设备管理</h2>
+
+                <!-- 设备连接状态 -->
+                <div class="device-list" id="deviceList">
+                    <div class="device-empty">
+                        <span>暂无设备连接</span>
+                        <p>ESP32-S3 设备连接后将在此显示</p>
+                    </div>
+                </div>
+
+                <!-- 发送到设备 -->
+                <div class="send-to-device" id="sendToDevice" style="display:none">
+                    <h3>发送到设备</h3>
+                    <select id="deviceSelect" class="select-input">
+                        <option value="">选择设备...</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="sendToDevice()">
+                        📤 发送故事
+                    </button>
+                </div>
+
+                <!-- 服务器信息 -->
+                <div class="server-info">
+                    <h3 class="info-title">🖥 服务器信息</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">地址</span>
+                            <span class="info-value" id="serverAddr">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">连接数</span>
+                            <span class="info-value" id="connectionCount">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">状态</span>
+                            <span class="info-value" id="serverState">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 主题预览 -->
+                <div class="theme-preview">
+                    <h3 class="info-title">🎨 主题插图预览</h3>
+                    <div class="theme-grid" id="themeGrid">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 底部状态栏 -->
+        <footer class="footer">
+            <div class="footer-content">
+                <span id="statusMessage">就绪</span>
+                <span class="footer-version">AI 睡前故事机 v1.0</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay" style="display:none">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p id="loadingText">正在生成故事...</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

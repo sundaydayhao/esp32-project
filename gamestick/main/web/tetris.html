@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>俄罗斯方块 – ESP32 GameStick</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d0d1a;
+    color: #e0e0e0;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 16px;
+  }
+
+  h1 {
+    font-size: 1.8em;
+    color: #e94560;
+    letter-spacing: 3px;
+  }
+
+  .wrap {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+
+  #board {
+    border: 2px solid #e94560;
+    background: #050510;
+    display: block;
+    box-shadow: 0 0 20px rgba(233,69,96,0.4);
+  }
+
+  .panel {
+    width: 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .box {
+    background: #16213e;
+    border: 1px solid #2a2a5a;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .box h3 {
+    font-size: 0.72em;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .box .val {
+    font-size: 1.5em;
+    color: #fff;
+    font-weight: bold;
+  }
+
+  #next-wrap {
+    display: flex;
+    justify-content: center;
+  }
+  #next { display: block; }
+
+  .ws-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75em;
+    font-weight: bold;
+  }
+  .ws-badge.on  { background: #1a4a2e; color: #52b788; }
+  .ws-badge.off { background: #3a1020; color: #e94560; }
+
+  .hint {
+    font-size: 0.7em;
+    color: #555;
+    line-height: 2;
+  }
+  .hint span { color: #aaa; }
+
+  /* Overlay */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    background: #16213e;
+    border: 2px solid #e94560;
+    border-radius: 14px;
+    padding: 36px 44px;
+    text-align: center;
+  }
+  .modal h2 { color: #e94560; font-size: 2em; margin-bottom: 12px; }
+  .modal p  { font-size: 1.1em; margin-bottom: 22px; color: #ccc; }
+  .btn {
+    background: #e94560;
+    color: #fff;
+    border: none;
+    padding: 10px 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1em;
+    font-family: inherit;
+    font-weight: bold;
+  }
+  .btn:hover { background: #c73652; }
+
+  .back-link {
+    font-size: 0.8em;
+    color: #555;
+    text-decoration: none;
+  }
+  .back-link:hover { color: #e94560; }
+</style>
+</head>
+<body>
+
+<h1>🟦 俄罗斯方块</h1>
+
+<div class="wrap">
+  <canvas id="board" width="300" height="600"></canvas>
+
+  <div class="panel">
+    <div class="box">
+      <h3>下一个</h3>
+      <div id="next-wrap"><canvas id="next" width="120" height="120"></canvas></div>
+    </div>
+    <div class="box">
+      <h3>分数</h3>
+      <div class="val" id="score">0</div>
+    </div>
+    <div class="box">
+      <h3>等级</h3>
+      <div class="val" id="level">1</div>
+    </div>
+    <div class="box">
+      <h3>消行</h3>
+      <div class="val" id="lines">0</div>
+    </div>
+    <div class="box">
+      <h3>手柄</h3>
+      <span class="ws-badge off" id="ws-badge">未连接</span>
+    </div>
+    <div class="box hint">
+      <h3>操作</h3>
+      <span>↑</span> 旋转<br>
+      <span>←→</span> 移动<br>
+      <span>↓</span> 加速<br>
+      <span>●</span> 硬降
+    </div>
+  </div>
+</div>
+
+<a class="back-link" href="/">← 返回游戏选择</a>
+
+<!-- Game Over overlay -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>游戏结束</h2>
+    <p>最终分数：<strong id="final-score">0</strong></p>
+    <button class="btn" id="restart-btn">重新开始</button>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   Constants
+   ===================================================================== */
+const COLS       = 10;
+const ROWS       = 20;
+const BS         = 30;   // block size in px
+const NEXT_BS    = 30;
+
+// Piece colour palette (index 0 = empty)
+const COLORS = [
+  null,
+  '#00e5ff', // I  cyan
+  '#ffd600', // O  yellow
+  '#aa00ff', // T  purple
+  '#00e676', // S  green
+  '#ff1744', // Z  red
+  '#2979ff', // J  blue
+  '#ff6d00', // L  orange
+];
+
+// Piece matrices (value = colour index)
+const SHAPES = [
+  null,
+  [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
+  [[2,2],[2,2]],                               // O
+  [[0,3,0],[3,3,3],[0,0,0]],                   // T
+  [[0,4,4],[4,4,0],[0,0,0]],                   // S
+  [[5,5,0],[0,5,5],[0,0,0]],                   // Z
+  [[6,0,0],[6,6,6],[0,0,0]],                   // J
+  [[0,0,7],[7,7,7],[0,0,0]],                   // L
+];
+
+/* =====================================================================
+   Canvas setup
+   ===================================================================== */
+const boardCanvas = document.getElementById('board');
+const bCtx        = boardCanvas.getContext('2d');
+const nextCanvas  = document.getElementById('next');
+const nCtx        = nextCanvas.getContext('2d');
+
+/* =====================================================================
+   Game state
+   ===================================================================== */
+let board, cur, nxt, score, level, lines, over, dropMs, dropAcc, lastTs;
+
+function mkBoard() {
+  return Array.from({length: ROWS}, () => new Array(COLS).fill(0));
+}
+
+function mkPiece() {
+  const id  = Math.floor(Math.random() * 7) + 1;
+  const mat = SHAPES[id].map(r => [...r]);
+  return {
+    id,
+    mat,
+    x: Math.floor(COLS / 2) - Math.floor(mat[0].length / 2),
+    y: 0,
+  };
+}
+
+/* =====================================================================
+   Collision / placement
+   ===================================================================== */
+function fits(mat, px, py) {
+  for (let r = 0; r < mat.length; r++) {
+    for (let c = 0; c < mat[r].length; c++) {
+      if (!mat[r][c]) continue;
+      const nx = px + c, ny = py + r;
+      if (nx < 0 || nx >= COLS || ny >= ROWS) return false;
+      if (ny >= 0 && board[ny][nx]) return false;
+    }
+  }
+  return true;
+}
+
+function lock() {
+  for (let r = 0; r < cur.mat.length; r++) {
+    for (let c = 0; c < cur.mat[r].length; c++) {
+      if (!cur.mat[r][c]) continue;
+      const ny = cur.y + r;
+      if (ny < 0) { endGame(); return; }
+      board[ny][cur.x + c] = cur.mat[r][c];
+    }
+  }
+  sweepLines();
+  cur = nxt;
+  nxt = mkPiece();
+  if (!fits(cur.mat, cur.x, cur.y)) endGame();
+}
+
+function sweepLines() {
+  let cleared = 0;
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (board[r].every(v => v !== 0)) {
+      board.splice(r, 1);
+      board.unshift(new Array(COLS).fill(0));
+      cleared++;
+      r++;
+    }
+  }
+  if (!cleared) return;
+  const pts = [0, 100, 300, 500, 800];
+  score += (pts[cleared] || 800) * level;
+  lines += cleared;
+  level  = Math.floor(lines / 10) + 1;
+  dropMs = Math.max(80, 1000 - (level - 1) * 90);
+  refreshUI();
+}
+
+/* =====================================================================
+   Rotation with wall-kick
+   ===================================================================== */
+function rotated(mat) {
+  const R = mat.length, C = mat[0].length;
+  const out = Array.from({length: C}, () => new Array(R).fill(0));
+  for (let r = 0; r < R; r++)
+    for (let c = 0; c < C; c++)
+      out[c][R - 1 - r] = mat[r][c];
+  return out;
+}
+
+function tryRotate() {
+  const m = rotated(cur.mat);
+  for (const dx of [0, -1, 1, -2, 2]) {
+    if (fits(m, cur.x + dx, cur.y)) {
+      cur.mat = m;
+      cur.x  += dx;
+      return;
+    }
+  }
+}
+
+/* =====================================================================
+   Moves
+   ===================================================================== */
+function moveLeft()  { if (fits(cur.mat, cur.x - 1, cur.y)) cur.x--; }
+function moveRight() { if (fits(cur.mat, cur.x + 1, cur.y)) cur.x++; }
+
+function softDrop() {
+  if (fits(cur.mat, cur.x, cur.y + 1)) { cur.y++; score++; }
+  else lock();
+  dropAcc = 0;
+}
+
+function hardDrop() {
+  while (fits(cur.mat, cur.x, cur.y + 1)) { cur.y++; score += 2; }
+  lock();
+  dropAcc = 0;
+  refreshUI();
+}
+
+/* =====================================================================
+   Rendering
+   ===================================================================== */
+function drawBlock(ctx, gx, gy, colorId, sz) {
+  if (!colorId) return;
+  const x = gx * sz, y = gy * sz;
+  ctx.fillStyle = COLORS[colorId];
+  ctx.fillRect(x + 1, y + 1, sz - 2, sz - 2);
+  // highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(x + 1, y + 1, sz - 2, 5);
+  ctx.fillRect(x + 1, y + 1, 5, sz - 2);
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(x + 1, y + sz - 6, sz - 2, 5);
+  ctx.fillRect(x + sz - 6, y + 1, 5, sz - 2);
+}
+
+function ghostY() {
+  let gy = cur.y;
+  while (fits(cur.mat, cur.x, gy + 1)) gy++;
+  return gy;
+}
+
+function render() {
+  // Board background
+  bCtx.fillStyle = '#050510';
+  bCtx.fillRect(0, 0, boardCanvas.width, boardCanvas.height);
+
+  // Grid lines
+  bCtx.strokeStyle = 'rgba(255,255,255,0.04)';
+  bCtx.lineWidth = 0.5;
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      bCtx.strokeRect(c * BS, r * BS, BS, BS);
+
+  // Locked blocks
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      drawBlock(bCtx, c, r, board[r][c], BS);
+
+  if (over) return;
+
+  // Ghost piece
+  const gy = ghostY();
+  bCtx.globalAlpha = 0.18;
+  for (let r = 0; r < cur.mat.length; r++)
+    for (let c = 0; c < cur.mat[r].length; c++)
+      drawBlock(bCtx, cur.x + c, gy + r, cur.mat[r][c], BS);
+  bCtx.globalAlpha = 1;
+
+  // Current piece
+  for (let r = 0; r < cur.mat.length; r++)
+    for (let c = 0; c < cur.mat[r].length; c++)
+      drawBlock(bCtx, cur.x + c, cur.y + r, cur.mat[r][c], BS);
+
+  // Next piece canvas
+  nCtx.fillStyle = '#16213e';
+  nCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+  const ox = Math.floor((4 - nxt.mat[0].length) / 2);
+  const oy = Math.floor((4 - nxt.mat.length) / 2);
+  for (let r = 0; r < nxt.mat.length; r++)
+    for (let c = 0; c < nxt.mat[r].length; c++)
+      drawBlock(nCtx, ox + c, oy + r, nxt.mat[r][c], NEXT_BS);
+}
+
+/* =====================================================================
+   UI helpers
+   ===================================================================== */
+function refreshUI() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('level').textContent = level;
+  document.getElementById('lines').textContent = lines;
+}
+
+function endGame() {
+  over = true;
+  document.getElementById('final-score').textContent = score;
+  document.getElementById('overlay').classList.add('show');
+}
+
+function restart() {
+  board  = mkBoard();
+  score  = 0;
+  level  = 1;
+  lines  = 0;
+  over   = false;
+  dropMs = 1000;
+  dropAcc = 0;
+  lastTs  = 0;
+  cur = mkPiece();
+  nxt = mkPiece();
+  document.getElementById('overlay').classList.remove('show');
+  refreshUI();
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('restart-btn').addEventListener('click', restart);
+
+/* =====================================================================
+   Game loop
+   ===================================================================== */
+function loop(ts) {
+  if (over) return;
+  const dt = ts - lastTs;
+  lastTs   = ts;
+  dropAcc += dt;
+  if (dropAcc >= dropMs) {
+    softDrop();
+    dropAcc = 0;
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* =====================================================================
+   Input handling
+   ===================================================================== */
+function handleDir(dir) {
+  if (over) {
+    if (dir === 'BUTTON') restart();
+    return;
+  }
+  switch (dir) {
+    case 'UP':     tryRotate();  break;
+    case 'DOWN':   softDrop();   break;
+    case 'LEFT':   moveLeft();   break;
+    case 'RIGHT':  moveRight();  break;
+    case 'BUTTON': hardDrop();   break;
+  }
+  render();
+}
+
+// Keyboard fallback
+document.addEventListener('keydown', e => {
+  const map = {
+    ArrowUp:    'UP',
+    ArrowDown:  'DOWN',
+    ArrowLeft:  'LEFT',
+    ArrowRight: 'RIGHT',
+    ' ':        'BUTTON',
+    'z':        'UP',
+    'Z':        'UP',
+  };
+  if (map[e.key]) { e.preventDefault(); handleDir(map[e.key]); }
+});
+
+/* =====================================================================
+   WebSocket
+   ===================================================================== */
+let ws;
+function connectWS() {
+  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws.onopen  = () => {
+    const b = document.getElementById('ws-badge');
+    b.textContent = '已连接';
+    b.className   = 'ws-badge on';
+  };
+  ws.onclose = () => {
+    const b = document.getElementById('ws-badge');
+    b.textContent = '未连接';
+    b.className   = 'ws-badge off';
+    setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.dir && d.dir !== 'NONE') handleDir(d.dir);
+    } catch (_) {}
+  };
+}
+
+/* =====================================================================
+   Boot
+   ===================================================================== */
+restart();
+connectWS();
+</script>
+</body>
+</html>

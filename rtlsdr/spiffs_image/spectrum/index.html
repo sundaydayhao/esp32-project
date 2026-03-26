@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32-S3 频谱仪</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .toolbar {
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+    .toolbar h1 { font-size: 15px; color: #58a6ff; white-space: nowrap; }
+    .ctrl-group { display: flex; align-items: center; gap: 6px; }
+    .ctrl-group label { font-size: 12px; color: #8b949e; white-space: nowrap; }
+    input[type=number], select {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      padding: 4px 8px;
+      font-size: 13px;
+      outline: none;
+    }
+    input[type=number] { width: 105px; }
+    input[type=number]:focus, select:focus { border-color: #58a6ff; }
+    .btn {
+      padding: 5px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #238636; color: #fff; }
+    .btn-primary:hover { background: #2ea043; }
+    .btn-primary:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+    .btn-danger  { background: #da3633; color: #fff; }
+    .btn-danger:hover  { background: #f85149; }
+    .btn-danger:disabled  { background: #21262d; color: #8b949e; cursor: not-allowed; }
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 10px; background: #21262d;
+      border-radius: 20px; font-size: 12px; margin-left: auto;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #f85149; flex-shrink: 0; }
+    .dot.active  { background: #3fb950; animation: pulse 2s infinite; }
+    .dot.loading { background: #d29922; animation: pulse 0.8s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    /* 频率轴信息栏 */
+    .freq-bar {
+      background: #0d1117;
+      border-bottom: 1px solid #21262d;
+      padding: 4px 14px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #8b949e;
+      flex-shrink: 0;
+    }
+    #freq-center { color: #58a6ff; font-weight: 600; }
+
+    /* 主画布区域 */
+    .canvas-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 0;
+    }
+    #spectrum-canvas {
+      width: 100%;
+      flex: 1;
+      display: block;
+      cursor: crosshair;
+    }
+    #waterfall-canvas {
+      width: 100%;
+      height: 160px;
+      display: block;
+      cursor: crosshair;
+    }
+
+    /* 底部信息 */
+    .bottom-bar {
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      padding: 4px 14px;
+      display: flex;
+      gap: 20px;
+      font-size: 11px;
+      color: #8b949e;
+      flex-shrink: 0;
+    }
+    .bottom-bar span { white-space: nowrap; }
+    #cursor-freq { color: #e6edf3; }
+    #cursor-db   { color: #3fb950; }
+    #fps-counter { margin-left: auto; }
+
+    /* 导航 */
+    .nav-links {
+      display: flex;
+      gap: 14px;
+      font-size: 12px;
+    }
+    .nav-links a { color: #58a6ff; text-decoration: none; }
+    .nav-links a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<!-- 工具栏 -->
+<div class="toolbar">
+  <h1>📡 频谱仪</h1>
+
+  <div class="ctrl-group">
+    <label>中心频率</label>
+    <input type="number" id="freq-input" value="100" step="0.1" min="0.5" max="1750" />
+    <label>MHz</label>
+  </div>
+
+  <div class="ctrl-group">
+    <label>带宽</label>
+    <select id="bw-select">
+      <option value="250000">250 kHz</option>
+      <option value="500000">500 kHz</option>
+      <option value="1000000" selected>1 MHz</option>
+      <option value="2000000">2 MHz</option>
+    </select>
+  </div>
+
+  <div class="ctrl-group">
+    <label>参考电平</label>
+    <input type="number" id="ref-level" value="0" step="5" min="-60" max="20" style="width:70px" />
+    <label>dB</label>
+  </div>
+
+  <div class="ctrl-group">
+    <label>量程</label>
+    <input type="number" id="db-range" value="80" step="10" min="20" max="120" style="width:70px" />
+    <label>dB</label>
+  </div>
+
+  <button class="btn btn-primary" id="btn-start" onclick="startSpectrum()">▶ 启动</button>
+  <button class="btn btn-danger"  id="btn-stop"  onclick="stopSpectrum()" disabled>■ 停止</button>
+
+  <div class="nav-links">
+    <a href="/">ADS-B</a>
+    <a href="/fm/">FM</a>
+  </div>
+
+  <div class="status-pill">
+    <div class="dot" id="status-dot"></div>
+    <span id="status-text">未连接</span>
+  </div>
+</div>
+
+<!-- 频率轴 -->
+<div class="freq-bar">
+  <span id="freq-left">—</span>
+  <span id="freq-center">100.000 MHz</span>
+  <span id="freq-right">—</span>
+</div>
+
+<!-- 画布 -->
+<div class="canvas-wrap">
+  <canvas id="spectrum-canvas"></canvas>
+  <canvas id="waterfall-canvas"></canvas>
+</div>
+
+<!-- 底部信息栏 -->
+<div class="bottom-bar">
+  <span>光标: <span id="cursor-freq">—</span></span>
+  <span>电平: <span id="cursor-db">—</span></span>
+  <span id="fps-counter">0 fps</span>
+</div>
+
+<script src="/spectrum/app.js"></script>
+</body>
+</html>

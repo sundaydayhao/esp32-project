@@ -1,0 +1,31 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "wifi_manager.c"
+        "audio_player.c"
+        "fft_analyzer.c"
+        "web_server.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_http_server
+        esp_http_client
+        esp_netif
+        spiffs
+        driver
+        fatfs
+        sdmmc
+        freertos
+        log
+        heap
+        json
+        minimp3
+        esp_timer
+        vfs
+    EMBED_FILES
+        "web/index.html"
+        "web/style.css"
+        "web/app.js"
+)
