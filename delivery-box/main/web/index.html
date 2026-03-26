@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能快递柜管理系统</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a73e8, #0d47a1);
+            color: white;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        header .subtitle {
+            font-size: 13px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px 16px;
+        }
+
+        /* 状态栏 */
+        .status-bar {
+            background: white;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .status-item .label {
+            color: #888;
+        }
+
+        .status-item .value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-green  { background: #e8f5e9; color: #2e7d32; }
+        .badge-blue   { background: #e3f2fd; color: #1565c0; }
+        .badge-orange { background: #fff3e0; color: #e65100; }
+        .badge-gray   { background: #f5f5f5; color: #616161; }
+
+        .refresh-btn {
+            margin-left: auto;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .refresh-btn:hover { background: #1557b0; }
+
+        /* 格口卡片网格 */
+        .lockers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .locker-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            border-top: 4px solid #ccc;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+
+        .locker-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .locker-card.empty     { border-top-color: #4CAF50; }
+        .locker-card.occupied  { border-top-color: #FF9800; }
+        .locker-card.unlocked  { border-top-color: #2196F3; }
+        .locker-card.locked_out{ border-top-color: #F44336; }
+
+        .locker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .locker-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .locker-info {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .door-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4CAF50;
+        }
+
+        .door-indicator.open { background: #F44336; animation: blink 1s infinite; }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .locker-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 14px;
+        }
+
+        .btn {
+            padding: 7px 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: opacity 0.15s;
+        }
+
+        .btn:hover { opacity: 0.85; }
+        .btn:active { opacity: 0.7; }
+
+        .btn-deposit { background: #4CAF50; color: white; }
+        .btn-unlock  { background: #2196F3; color: white; }
+        .btn-lock    { background: #607D8B; color: white; }
+        .btn-reset   { background: #F44336; color: white; }
+
+        /* WiFi 配置面板 */
+        .panel {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+
+        .panel h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .form-group label {
+            font-size: 12px;
+            color: #888;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.15s;
+            min-width: 180px;
+        }
+
+        .form-group input:focus { border-color: #1a73e8; }
+
+        .btn-primary {
+            background: #1a73e8;
+            color: white;
+            padding: 9px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover { background: #1557b0; }
+
+        /* API 文档 */
+        .api-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .api-table th {
+            background: #f8f9fa;
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #eee;
+        }
+
+        .api-table td {
+            padding: 9px 12px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .api-table tr:hover td { background: #fafafa; }
+
+        .method {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: monospace;
+        }
+
+        .method-get  { background: #e8f5e9; color: #2e7d32; }
+        .method-post { background: #e3f2fd; color: #1565c0; }
+
+        code {
+            background: #f5f5f5;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        /* Toast 通知 */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #323232;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+            max-width: 320px;
+        }
+
+        #toast.show { opacity: 1; }
+        #toast.success { background: #2e7d32; }
+        #toast.error   { background: #c62828; }
+
+        /* 加载动画 */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 响应式 */
+        @media (max-width: 600px) {
+            .status-bar { flex-direction: column; align-items: flex-start; }
+            .refresh-btn { margin-left: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <span style="font-size:28px">📦</span>
+    <div>
+        <h1>智能快递柜管理系统</h1>
+        <div class="subtitle">Smart Parcel Locker Admin Panel</div>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- 系统状态栏 -->
+    <div class="status-bar">
+        <div class="status-item">
+            <span class="label">WiFi:</span>
+            <span class="badge badge-gray" id="wifi-state">--</span>
+        </div>
+        <div class="status-item">
+            <span class="label">IP:</span>
+            <span class="value" id="ip-addr">--</span>
+        </div>
+        <div class="status-item">
+            <span class="label">SSID:</span>
+            <span class="value" id="ssid-val">--</span>
+        </div>
+        <div class="status-item">
+            <span class="label">空闲格口:</span>
+            <span class="value" id="free-count">--</span>
+            <span class="label">/ <span id="total-count">--</span></span>
+        </div>
+        <button class="refresh-btn" onclick="refresh()" id="refresh-btn">
+            <span>🔄</span> 刷新
+        </button>
+    </div>
+
+    <!-- 格口卡片 -->
+    <div class="lockers-grid" id="lockers-grid">
+        <div style="color:#aaa;padding:20px">加载中...</div>
+    </div>
+
+    <!-- WiFi 配置 -->
+    <div class="panel">
+        <h2>🌐 WiFi 配置</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>WiFi SSID</label>
+                <input type="text" id="wifi-ssid" placeholder="输入WiFi名称">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="wifi-pass" placeholder="输入WiFi密码">
+            </div>
+            <button class="btn-primary" onclick="setWifi()">连接</button>
+        </div>
+    </div>
+
+    <!-- API 文档 -->
+    <div class="panel">
+        <h2>📋 REST API 接口</h2>
+        <table class="api-table">
+            <thead>
+                <tr>
+                    <th>方法</th>
+                    <th>路径</th>
+                    <th>说明</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td><code>/api/status</code></td>
+                    <td>系统状态</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td><code>/api/lockers</code></td>
+                    <td>所有格口状态</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td><code>/api/lockers/{id}</code></td>
+                    <td>指定格口状态</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td><code>/api/lockers/{id}/deposit</code></td>
+                    <td>存件，返回取件码</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td><code>/api/lockers/*/pickup</code></td>
+                    <td>取件，Body: <code>{"code":"123456"}</code></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td><code>/api/lockers/{id}/unlock</code></td>
+                    <td>强制解锁（管理员）</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td><code>/api/lockers/{id}/reset</code></td>
+                    <td>重置格口为空闲</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td><code>/api/wifi</code></td>
+                    <td>配置WiFi，Body: <code>{"ssid":"...","password":"..."}</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- Toast 通知 -->
+<div id="toast"></div>
+
+<script>
+    // ============================================================
+    // 工具函数
+    // ============================================================
+
+    function api(method, url, body, cb) {
+        var x = new XMLHttpRequest();
+        x.open(method, url);
+        x.setRequestHeader('Content-Type', 'application/json');
+        x.timeout = 5000;
+        x.onload = function () {
+            try { cb(null, JSON.parse(x.responseText)); }
+            catch (e) { cb(null, {}); }
+        };
+        x.onerror = x.ontimeout = function () { cb('网络错误'); };
+        x.send(body ? JSON.stringify(body) : null);
+    }
+
+    var toastTimer = null;
+    function showToast(msg, type) {
+        var el = document.getElementById('toast');
+        el.textContent = msg;
+        el.className = 'show ' + (type || '');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { el.className = ''; }, 3000);
+    }
+
+    // ============================================================
+    // 状态渲染
+    // ============================================================
+
+    var STATE_LABELS = {
+        'empty':      { text: '空闲',   badge: 'badge-green'  },
+        'occupied':   { text: '已占用', badge: 'badge-orange' },
+        'unlocked':   { text: '已解锁', badge: 'badge-blue'   },
+        'locked_out': { text: '已锁定', badge: 'badge-gray'   }
+    };
+
+    var WIFI_LABELS = {
+        'disconnected': { text: '未连接', badge: 'badge-gray'   },
+        'connecting':   { text: '连接中', badge: 'badge-orange' },
+        'connected':    { text: '已连接', badge: 'badge-green'  },
+        'ap_only':      { text: 'AP模式', badge: 'badge-blue'   },
+        'ap_sta':       { text: 'AP+STA', badge: 'badge-green'  }
+    };
+
+    function renderStatus(s) {
+        var wl = WIFI_LABELS[s.wifi_state] || { text: s.wifi_state, badge: 'badge-gray' };
+        var el = document.getElementById('wifi-state');
+        el.textContent = wl.text;
+        el.className = 'badge ' + wl.badge;
+
+        document.getElementById('ip-addr').textContent    = s.ip_address  || '--';
+        document.getElementById('ssid-val').textContent   = s.ssid        || '--';
+        document.getElementById('free-count').textContent = s.free_lockers != null ? s.free_lockers : '--';
+        document.getElementById('total-count').textContent= s.total_lockers != null ? s.total_lockers : '--';
+    }
+
+    function renderLockers(lockers) {
+        var grid = document.getElementById('lockers-grid');
+        if (!lockers || !lockers.length) {
+            grid.innerHTML = '<div style="color:#aaa;padding:20px">无格口数据</div>';
+            return;
+        }
+
+        var html = '';
+        lockers.forEach(function (l) {
+            var sl = STATE_LABELS[l.state] || { text: l.state, badge: 'badge-gray' };
+            var doorOpen = l.door_open;
+
+            html += '<div class="locker-card ' + l.state + '">';
+            html += '<div class="locker-header">';
+            html += '<span class="locker-title">格口 #' + (l.id + 1) + '</span>';
+            html += '<span class="badge ' + sl.badge + '">' + sl.text + '</span>';
+            html += '</div>';
+
+            html += '<div class="locker-info">';
+            html += '<span class="door-indicator' + (doorOpen ? ' open' : '') + '"></span>';
+            html += '门: ' + (doorOpen ? '<b style="color:#F44336">已开</b>' : '已关');
+            html += '</div>';
+
+            if (l.fail_count > 0) {
+                html += '<div class="locker-info">⚠️ 失败次数: ' + l.fail_count + '</div>';
+            }
+
+            html += '<div class="locker-actions">';
+            if (l.state === 'empty') {
+                html += '<button class="btn btn-deposit" onclick="deposit(' + l.id + ')">📥 存件</button>';
+            }
+            if (l.state === 'occupied' || l.state === 'locked_out') {
+                html += '<button class="btn btn-unlock" onclick="unlock(' + l.id + ')">🔓 解锁</button>';
+            }
+            if (l.state === 'unlocked') {
+                html += '<button class="btn btn-lock" onclick="lock(' + l.id + ')">🔒 锁定</button>';
+            }
+            if (l.state !== 'empty') {
+                html += '<button class="btn btn-reset" onclick="doReset(' + l.id + ')">🗑️ 重置</button>';
+            }
+            html += '</div>';
+            html += '</div>';
+        });
+
+        grid.innerHTML = html;
+    }
+
+    // ============================================================
+    // 刷新数据
+    // ============================================================
+
+    function refresh() {
+        var btn = document.getElementById('refresh-btn');
+        btn.innerHTML = '<span class="spinner"></span> 刷新中';
+        btn.disabled = true;
+
+        api('GET', '/api/status', null, function (err, s) {
+            if (!err) renderStatus(s);
+        });
+
+        api('GET', '/api/lockers', null, function (err, d) {
+            btn.innerHTML = '<span>🔄</span> 刷新';
+            btn.disabled = false;
+            if (!err && d.lockers) renderLockers(d.lockers);
+        });
+    }
+
+    // ============================================================
+    // 格口操作
+    // ============================================================
+
+    function deposit(id) {
+        api('POST', '/api/lockers/' + id + '/deposit', {}, function (err, r) {
+            if (err) { showToast('操作失败: ' + err, 'error'); return; }
+            if (r.code) {
+                showToast('存件成功！取件码: ' + r.code, 'success');
+                // 弹出取件码
+                alert('📦 存件成功！\n\n格口编号: #' + (id + 1) + '\n取件码: ' + r.code + '\n\n请将取件码告知收件人');
+            } else {
+                showToast(r.message || '操作失败', 'error');
+            }
+            refresh();
+        });
+    }
+
+    function unlock(id) {
+        if (!confirm('确认强制解锁格口 #' + (id + 1) + '？')) return;
+        api('POST', '/api/lockers/' + id + '/unlock', {}, function (err, r) {
+            if (err) { showToast('操作失败', 'error'); return; }
+            showToast(r.message || '已解锁', r.status === 'ok' ? 'success' : 'error');
+            refresh();
+        });
+    }
+
+    function lock(id) {
+        api('POST', '/api/lockers/' + id + '/lock', {}, function (err, r) {
+            if (err) { showToast('操作失败', 'error'); return; }
+            showToast(r.message || '已锁定', r.status === 'ok' ? 'success' : 'error');
+            refresh();
+        });
+    }
+
+    function doReset(id) {
+        if (!confirm('确认重置格口 #' + (id + 1) + '？\n此操作将清除取件码并将格口设为空闲状态。')) return;
+        api('POST', '/api/lockers/' + id + '/reset', {}, function (err, r) {
+            if (err) { showToast('操作失败', 'error'); return; }
+            showToast(r.message || '已重置', r.status === 'ok' ? 'success' : 'error');
+            refresh();
+        });
+    }
+
+    function setWifi() {
+        var ssid = document.getElementById('wifi-ssid').value.trim();
+        var pass = document.getElementById('wifi-pass').value;
+        if (!ssid) { showToast('请输入WiFi名称', 'error'); return; }
+
+        api('POST', '/api/wifi', { ssid: ssid, password: pass }, function (err, r) {
+            if (err) { showToast('操作失败', 'error'); return; }
+            showToast(r.message || 'WiFi配置已保存', 'success');
+        });
+    }
+
+    // ============================================================
+    // 初始化
+    // ============================================================
+
+    refresh();
+    setInterval(refresh, 5000); // 每5秒自动刷新
+</script>
+
+</body>
+</html>

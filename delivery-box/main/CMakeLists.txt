@@ -1,0 +1,27 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "storage.c"
+        "buzzer.c"
+        "locker.c"
+        "keypad.c"
+        "ssd1306.c"
+        "display.c"
+        "wifi_manager.c"
+        "http_server.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        nvs_flash
+        driver
+        esp_wifi
+        esp_event
+        esp_netif
+        esp_http_server
+        json
+        freertos
+        log
+        esp_timer
+    EMBED_FILES
+        "web/index.html"
+)

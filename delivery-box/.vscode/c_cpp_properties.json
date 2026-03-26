@@ -1,0 +1,45 @@
+{
+    "configurations": [
+        {
+            "name": "ESP-IDF",
+            "compilerPath": "${config:idf.toolsPathWin}/tools/xtensa-esp-elf/esp-13.2.0_20230928/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc.exe",
+            "compilerArgs": [],
+            "includePath": [
+                "${config:idf.espIdfPath}/components/**",
+                "${workspaceFolder}/**",
+                "${config:idf.espIdfPath}/components/freertos/FreeRTOS-Kernel/include",
+                "${config:idf.espIdfPath}/components/freertos/esp_additions/include",
+                "${config:idf.espIdfPath}/components/esp_common/include",
+                "${config:idf.espIdfPath}/components/esp_hw_support/include",
+                "${config:idf.espIdfPath}/components/driver/include",
+                "${config:idf.espIdfPath}/components/nvs_flash/include",
+                "${config:idf.espIdfPath}/components/esp_wifi/include",
+                "${config:idf.espIdfPath}/components/esp_netif/include",
+                "${config:idf.espIdfPath}/components/esp_event/include",
+                "${config:idf.espIdfPath}/components/esp_http_server/include",
+                "${config:idf.espIdfPath}/components/json/cJSON",
+                "${config:idf.espIdfPath}/components/log/include",
+                "${config:idf.espIdfPath}/components/esp_timer/include",
+                "${config:idf.espIdfPath}/components/hal/include",
+                "${config:idf.espIdfPath}/components/soc/esp32s3/include",
+                "${config:idf.espIdfPath}/components/soc/include"
+            ],
+            "defines": [
+                "ESP_PLATFORM",
+                "IDF_VER=\"v5.1.0\"",
+                "CONFIG_IDF_TARGET_ESP32S3=1"
+            ],
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "gcc-x64",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "${config:idf.espIdfPath}/components"
+                ],
+                "limitSymbolsToIncludedHeaders": false
+            }
+        }
+    ],
+    "version": 4
+}
