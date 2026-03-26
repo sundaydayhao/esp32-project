@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "main.c"
         "lcd12864.c"
+        "lcd12864_gfx.c"
         "wifi_manager.c"
         "ntp_client.c"
         "weather_client.c"
