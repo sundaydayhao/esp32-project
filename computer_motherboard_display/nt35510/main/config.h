@@ -79,10 +79,20 @@
 #define AUDIO_TONE_FREQ_HZ          1200
 #define AUDIO_TONE_DURATION_MS      120
 #define AUDIO_TONE_VOLUME_PCT       18
+#define AUDIO_SPEECH_GAIN_PCT       180
 #define AUDIO_ANNOUNCE_START_HOUR   8
 #define AUDIO_ANNOUNCE_END_HOUR     20
 #define AUDIO_ANNOUNCE_POLL_MS      1000
 #define AUDIO_SEGMENT_GAP_MS        80
+#define AUDIO_SPEECH_SAMPLE_RATE_HZ 8000
+
+/* ================================================================
+ * Input
+ * ================================================================ */
+#define BUTTON_TIME_ANNOUNCE_PIN        GPIO_NUM_21
+#define BUTTON_TIME_ACTIVE_LEVEL        0
+#define BUTTON_TIME_POLL_MS             10
+#define BUTTON_TIME_DEBOUNCE_MS         40
 
 /* ================================================================
  * WiFi
@@ -146,8 +156,10 @@
 #define TASK_STACK_WEATHER      (16 * 1024)
 #define TASK_STACK_NTP          (4  * 1024)
 #define TASK_STACK_CHIME        (6  * 1024)
+#define TASK_STACK_BUTTON       (4  * 1024)
 #define TASK_PRIO_LCD_DIAG      3
 #define TASK_PRIO_UI            7
 #define TASK_PRIO_WEATHER       4
 #define TASK_PRIO_NTP           5
 #define TASK_PRIO_CHIME         4
+#define TASK_PRIO_BUTTON        4

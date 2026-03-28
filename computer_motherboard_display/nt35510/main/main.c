@@ -9,6 +9,7 @@
 #include "audio/audio_output.h"
 #include "audio/hourly_chime.h"
 #include "config.h"
+#include "input/button_time_announce.h"
 #include "lcd/lcd_driver.h"
 #include "net/ntp_client.h"
 #include "net/weather_client.h"
@@ -145,6 +146,11 @@ void app_main(void)
         hourly_chime_task, "hourly_chime",
         TASK_STACK_CHIME, NULL,
         TASK_PRIO_CHIME, NULL, 0);
+
+    xTaskCreatePinnedToCore(
+        button_time_announce_task, "button_time",
+        TASK_STACK_BUTTON, NULL,
+        TASK_PRIO_BUTTON, NULL, 0);
 
     start_ui_task_or_halt();
 

@@ -1,8 +1,11 @@
+file(GLOB AUDIO_TTS_FILES "audio/tts/*.wav")
+
 idf_component_register(
     SRCS
         "main.c"
         "audio/audio_output.c"
         "audio/hourly_chime.c"
+        "input/button_time_announce.c"
         "lcd/lcd_driver.c"
         "net/wifi_manager.c"
         "net/ntp_client.c"
@@ -13,6 +16,7 @@ idf_component_register(
     INCLUDE_DIRS
         "."
         "audio"
+        "input"
         "lcd"
         "net"
         "ui"
@@ -36,19 +40,5 @@ idf_component_register(
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
     EMBED_FILES
-        "audio/tts/prefix_beijing_time.wav"
-        "audio/tts/suffix_oclock.wav"
-        "audio/tts/hour_08.wav"
-        "audio/tts/hour_09.wav"
-        "audio/tts/hour_10.wav"
-        "audio/tts/hour_11.wav"
-        "audio/tts/hour_12.wav"
-        "audio/tts/hour_13.wav"
-        "audio/tts/hour_14.wav"
-        "audio/tts/hour_15.wav"
-        "audio/tts/hour_16.wav"
-        "audio/tts/hour_17.wav"
-        "audio/tts/hour_18.wav"
-        "audio/tts/hour_19.wav"
-        "audio/tts/hour_20.wav"
+        ${AUDIO_TTS_FILES}
 )

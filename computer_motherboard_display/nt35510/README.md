@@ -43,11 +43,5 @@ Flash:
 idf.py -p COMx flash monitor
 ```
 
-If you want to start from the example NT35510 defaults:
-
-```powershell
-$env:SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.nt35510.defaults"
-idf.py build
-```
-
-Update the example pin assignments in `sdkconfig.nt35510.defaults` before flashing to real hardware.
+The checked-in `sdkconfig.defaults` already includes the example NT35510 I80
+pin mapping. Update the pin assignments there before flashing to real hardware.
