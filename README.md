@@ -8,7 +8,7 @@
 
 | 项目 | 描述 |
 |------|------|
-| [01-learn](./01-learn/) | ESP32 入门学习项目，包含 GPIO、PWM、I2C/SPI、WiFi、LVGL 等基础示例 |
+| [learn](./learn/) | ESP32 入门学习项目，包含 GPIO、PWM、I2C/SPI、WiFi、LVGL 等基础示例 |
 | [tinyml](./tinyml/) | TinyML 机器学习示例，包含 hello_world、magic_wand、micro_speech、person_detection |
 
 ---
@@ -17,9 +17,9 @@
 
 | 项目 | 描述 |
 |------|------|
-| [02-wifi_analyzer](./02-wifi_analyzer/) | WiFi 信号分析仪，扫描周围网络并图形化显示 SSID、RSSI、信道、加密方式 |
-| [05-signal-generator](./05-signal-generator/) | 基于 ESP32 的信号发生器，支持多种波形输出 |
-| [06-oscilloscope](./06-oscilloscope/) | 基于 ESP32 的数字示波器，支持 Web 界面实时波形显示 |
+| [wifi_analyzer](./wifi_analyzer/) | WiFi 信号分析仪，扫描周围网络并图形化显示 SSID、RSSI、信道、加密方式 |
+| [signal-generator](./signal-generator/) | 基于 ESP32 的信号发生器，支持多种波形输出 |
+| [oscilloscope](./06-oscilloscope/) | 基于 ESP32 的数字示波器，支持 Web 界面实时波形显示 |
 | [rtlsdr](./rtlsdr/) | RTL-SDR 软件无线电接收项目 |
 | [magnifier](./magnifier/) | 数字放大镜，基于 ESP32-S3 + OV2640 摄像头，支持 2x/4x/8x 多级放大 |
 
@@ -55,7 +55,7 @@
 
 | 项目 | 描述 |
 |------|------|
-| [04-photo_album](./04-photo_album/) | 电子相册，从 SD 卡读取 JPEG 图片并在 LCD 上自动轮播 |
+| [photo_album](./photo_album/) | 电子相册，从 SD 卡读取 JPEG 图片并在 LCD 上自动轮播 |
 | [music-spectrum](./music-spectrum/) | 音乐频谱显示，实时音频频谱可视化 |
 | [gamestick](./gamestick/) | 游戏手柄，基于 ESP32 的蓝牙游戏控制器 |
 | [shop-menu](./shop-menu/) | 商店菜单展示系统，基于 ESP32 的电子菜单/价目表 |
@@ -66,7 +66,7 @@
 
 | 项目 | 描述 |
 |------|------|
-| [03-radar](./03-radar/) | 超声波雷达，使用舵机旋转 HC-SR04 进行 180° 扫描并实时显示雷达图像 |
+| [radar](./radar/) | 超声波雷达，使用舵机旋转 HC-SR04 进行 180° 扫描并实时显示雷达图像 |
 | [computer_motherboard_display](./computer_motherboard_display/) | 电脑主板副屏，通过串口接收主机数据并在 LCD 上显示系统状态 |
 | [esp32-s3-nt35510-example](./esp32-s3-nt35510-example/) | ESP32-S3 + NT35510 显示屏驱动示例 |
 
@@ -143,12 +143,12 @@ idf.py -p <串口号> flash monitor
 
 ```
 esp32-project/
-├── 01-learn/               # ESP32 入门学习
-├── 02-wifi_analyzer/       # WiFi 分析仪
-├── 03-radar/               # 超声波雷达
-├── 04-photo_album/         # 电子相册
-├── 05-signal-generator/    # 信号发生器
-├── 06-oscilloscope/        # 数字示波器
+├── learn/               # ESP32 入门学习
+├── wifi_analyzer/       # WiFi 分析仪
+├── radar/               # 超声波雷达
+├── photo_album/         # 电子相册
+├── signal-generator/    # 信号发生器
+├── oscilloscope/        # 数字示波器
 ├── ai-english-trainer/     # AI 英语训练器
 ├── ai-garbage-recognition/ # AI 垃圾分类
 ├── ai-story-player/        # AI 故事机
