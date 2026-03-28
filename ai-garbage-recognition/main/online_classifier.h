@@ -37,6 +37,9 @@ esp_err_t online_classifier_query(const char *object_name,
                                    garbage_type_t *result,
                                    int *confidence);
 
+esp_err_t online_classifier_query_image(garbage_type_t *result,
+                                        int *confidence);
+
 /**
  * @brief 直接通过 HTTP API 查询垃圾类型
  * @param object_name 物体名称

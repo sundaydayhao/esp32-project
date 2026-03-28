@@ -44,6 +44,8 @@ uint8_t* camera_get_rgb_buffer(void);
  */
 size_t camera_get_buffer_size(void);
 
+esp_err_t camera_get_jpeg_buffer(uint8_t **jpeg_buf, size_t *jpeg_len);
+
 /**
  * @brief 检测是否有物体放入 (基于帧差运动检测)
  * @return true 检测到运动/物体

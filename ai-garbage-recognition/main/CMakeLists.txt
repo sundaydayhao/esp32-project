@@ -7,11 +7,11 @@ idf_component_register(
         "audio_player.cpp"
         "led_indicator.cpp"
         "wifi_manager.cpp"
-        "online_classifier.cpp"
+        "online_classifier_llm.cpp"
     INCLUDE_DIRS
         "."
     REQUIRES
-        esp_camera
+        esp32-camera
         driver
         esp_timer
         freertos

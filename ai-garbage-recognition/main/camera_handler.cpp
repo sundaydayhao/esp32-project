@@ -1,63 +1,48 @@
 /**
  * camera_handler.cpp
- * 摄像头处理模块实现 / Camera Handler Implementation
- *
- * 使用 ESP-IDF esp_camera 组件
- * 支持 OV2640 摄像头模块
+ * Camera handler implementation
  */
 
 #include "camera_handler.h"
-#include "esp_log.h"
 #include "esp_camera.h"
+#include "esp_heap_caps.h"
+#include "esp_log.h"
 #include "esp_psram.h"
-#include <string.h>
-#include <stdlib.h>
+#include "img_converters.h"
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
-static const char* TAG = "CAMERA";
+static const char *TAG = "CAMERA";
 
-// ============================================================
-// 内部状态 / Internal State
-// ============================================================
 static bool     s_initialized    = false;
-static uint8_t* s_rgb_buffer     = NULL;   // RGB888 帧缓冲
+static uint8_t *s_rgb_buffer     = NULL;
 static size_t   s_buffer_size    = 0;
-static uint8_t* s_prev_gray      = NULL;   // 上一帧灰度图 (运动检测)
+static uint8_t *s_jpeg_buffer    = NULL;
+static size_t   s_jpeg_size      = 0;
+static bool     s_jpeg_dirty     = true;
+static uint8_t *s_prev_gray      = NULL;
 static bool     s_has_prev_frame = false;
 
-// ============================================================
-// 内部函数 / Internal Functions
-// ============================================================
-
-/**
- * RGB565 转 RGB888
- */
-static void rgb565_to_rgb888(const uint8_t* src, uint8_t* dst, int pixel_count)
+static void rgb565_to_rgb888(const uint8_t *src, uint8_t *dst, int pixel_count)
 {
-    const uint16_t* pixels = (const uint16_t*)src;
+    const uint16_t *pixels = (const uint16_t *)src;
     for (int i = 0; i < pixel_count; i++) {
         uint16_t p = pixels[i];
-        // RGB565: RRRRRGGGGGGBBBBB (big-endian from camera)
-        // 字节序交换
         p = (p >> 8) | (p << 8);
-        dst[i * 3 + 0] = ((p >> 11) & 0x1F) << 3;  // R: 5bit -> 8bit
-        dst[i * 3 + 1] = ((p >> 5)  & 0x3F) << 2;  // G: 6bit -> 8bit
-        dst[i * 3 + 2] = ( p        & 0x1F) << 3;  // B: 5bit -> 8bit
+        dst[i * 3 + 0] = ((p >> 11) & 0x1F) << 3;
+        dst[i * 3 + 1] = ((p >> 5)  & 0x3F) << 2;
+        dst[i * 3 + 2] = ( p        & 0x1F) << 3;
     }
 }
-
-// ============================================================
-// 公共接口实现 / Public Interface Implementation
-// ============================================================
 
 esp_err_t camera_init(void)
 {
     if (s_initialized) {
-        ESP_LOGW(TAG, "摄像头已初始化");
+        ESP_LOGW(TAG, "Camera already initialized");
         return ESP_OK;
     }
 
-    // 摄像头配置
     camera_config_t config = {
         .pin_pwdn     = CAM_PIN_PWDN,
         .pin_reset    = CAM_PIN_RESET,
@@ -75,73 +60,68 @@ esp_err_t camera_init(void)
         .pin_vsync    = CAM_PIN_VSYNC,
         .pin_href     = CAM_PIN_HREF,
         .pin_pclk     = CAM_PIN_PCLK,
-        .xclk_freq_hz = 20000000,           // 20MHz XCLK
+        .xclk_freq_hz = 20000000,
         .ledc_timer   = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
-        .pixel_format = PIXFORMAT_RGB565,   // RGB565 用于颜色分析
-        .frame_size   = FRAMESIZE_QVGA,     // 320x240
+        .pixel_format = PIXFORMAT_RGB565,
+        .frame_size   = FRAMESIZE_QVGA,
         .jpeg_quality = 12,
         .fb_count     = 2,
         .fb_location  = CAMERA_FB_IN_PSRAM,
         .grab_mode    = CAMERA_GRAB_WHEN_EMPTY,
     };
 
-    // 检查 PSRAM
     if (esp_psram_get_size() == 0) {
-        ESP_LOGW(TAG, "未检测到 PSRAM，使用内部 RAM");
+        ESP_LOGW(TAG, "PSRAM not detected, using internal RAM");
         config.fb_location = CAMERA_FB_IN_DRAM;
         config.fb_count = 1;
     } else {
-        ESP_LOGI(TAG, "PSRAM 大小: %d KB", esp_psram_get_size() / 1024);
+        ESP_LOGI(TAG, "PSRAM size: %d KB", esp_psram_get_size() / 1024);
     }
 
     esp_err_t ret = esp_camera_init(&config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "摄像头初始化失败: 0x%x", ret);
+        ESP_LOGE(TAG, "Camera init failed: 0x%x", ret);
         return ret;
     }
 
-    // 调整传感器参数以优化颜色识别
-    sensor_t* sensor = esp_camera_sensor_get();
+    sensor_t *sensor = esp_camera_sensor_get();
     if (sensor) {
-        sensor->set_brightness(sensor, 0);     // 亮度
-        sensor->set_contrast(sensor, 0);       // 对比度
-        sensor->set_saturation(sensor, 2);     // 提高饱和度，增强颜色识别
-        sensor->set_sharpness(sensor, 1);      // 锐度
-        sensor->set_denoise(sensor, 1);        // 降噪
-        sensor->set_whitebal(sensor, 1);       // 自动白平衡
-        sensor->set_gain_ctrl(sensor, 1);      // 自动增益
-        sensor->set_exposure_ctrl(sensor, 1);  // 自动曝光
-        sensor->set_awb_gain(sensor, 1);       // AWB 增益
-        sensor->set_lenc(sensor, 1);           // 镜头校正
-        sensor->set_hmirror(sensor, 0);        // 水平镜像
-        sensor->set_vflip(sensor, 0);          // 垂直翻转
-        ESP_LOGI(TAG, "传感器参数已优化");
+        sensor->set_brightness(sensor, 0);
+        sensor->set_contrast(sensor, 0);
+        sensor->set_saturation(sensor, 2);
+        sensor->set_sharpness(sensor, 1);
+        sensor->set_denoise(sensor, 1);
+        sensor->set_whitebal(sensor, 1);
+        sensor->set_gain_ctrl(sensor, 1);
+        sensor->set_exposure_ctrl(sensor, 1);
+        sensor->set_awb_gain(sensor, 1);
+        sensor->set_lenc(sensor, 1);
+        sensor->set_hmirror(sensor, 0);
+        sensor->set_vflip(sensor, 0);
     }
 
-    // 分配 RGB888 缓冲区
     s_buffer_size = IMG_WIDTH * IMG_HEIGHT * 3;
     if (esp_psram_get_size() > 0) {
-        s_rgb_buffer = (uint8_t*)heap_caps_malloc(s_buffer_size, MALLOC_CAP_SPIRAM);
+        s_rgb_buffer = (uint8_t *)heap_caps_malloc(s_buffer_size, MALLOC_CAP_SPIRAM);
     }
     if (!s_rgb_buffer) {
-        s_rgb_buffer = (uint8_t*)malloc(s_buffer_size);
+        s_rgb_buffer = (uint8_t *)malloc(s_buffer_size);
     }
     if (!s_rgb_buffer) {
-        ESP_LOGE(TAG, "RGB 缓冲区分配失败 (%d bytes)", s_buffer_size);
         esp_camera_deinit();
         return ESP_ERR_NO_MEM;
     }
 
-    // 分配运动检测灰度缓冲区 (降采样 2x)
-    size_t gray_size = (IMG_WIDTH / 2) * (IMG_HEIGHT / 2);
-    s_prev_gray = (uint8_t*)malloc(gray_size);
+    const size_t gray_size = (IMG_WIDTH / 2) * (IMG_HEIGHT / 2);
+    s_prev_gray = (uint8_t *)malloc(gray_size);
     if (!s_prev_gray) {
-        ESP_LOGW(TAG, "运动检测缓冲区分配失败，运动检测不可用");
+        ESP_LOGW(TAG, "Motion detection buffer allocation failed");
     }
 
     s_initialized = true;
-    ESP_LOGI(TAG, "摄像头初始化成功 (%dx%d)", IMG_WIDTH, IMG_HEIGHT);
+    s_jpeg_dirty = true;
+    ESP_LOGI(TAG, "Camera init ok (%dx%d)", IMG_WIDTH, IMG_HEIGHT);
     return ESP_OK;
 }
 
@@ -159,10 +139,16 @@ void camera_deinit(void)
         free(s_prev_gray);
         s_prev_gray = NULL;
     }
+    if (s_jpeg_buffer) {
+        free(s_jpeg_buffer);
+        s_jpeg_buffer = NULL;
+    }
 
     s_initialized = false;
     s_has_prev_frame = false;
-    ESP_LOGI(TAG, "摄像头已释放");
+    s_jpeg_size = 0;
+    s_jpeg_dirty = true;
+    ESP_LOGI(TAG, "Camera released");
 }
 
 esp_err_t camera_capture_frame(void)
@@ -171,35 +157,36 @@ esp_err_t camera_capture_frame(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    // 丢弃旧帧，获取最新帧
-    camera_fb_t* fb = esp_camera_fb_get();
+    camera_fb_t *fb = esp_camera_fb_get();
     if (fb) {
         esp_camera_fb_return(fb);
     }
 
-    // 获取新帧
     fb = esp_camera_fb_get();
     if (!fb) {
-        ESP_LOGE(TAG, "帧捕获失败");
+        ESP_LOGE(TAG, "Capture failed");
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, "帧捕获: %dx%d, %d bytes, format=%d",
-             fb->width, fb->height, fb->len, fb->format);
-
-    if (fb->format == PIXFORMAT_RGB565) {
-        rgb565_to_rgb888(fb->buf, s_rgb_buffer, IMG_WIDTH * IMG_HEIGHT);
-    } else {
-        ESP_LOGW(TAG, "不支持的像素格式: %d", fb->format);
+    if (fb->format != PIXFORMAT_RGB565) {
+        ESP_LOGW(TAG, "Unsupported frame format: %d", fb->format);
         esp_camera_fb_return(fb);
         return ESP_ERR_NOT_SUPPORTED;
     }
 
+    rgb565_to_rgb888(fb->buf, s_rgb_buffer, IMG_WIDTH * IMG_HEIGHT);
     esp_camera_fb_return(fb);
+
+    if (s_jpeg_buffer) {
+        free(s_jpeg_buffer);
+        s_jpeg_buffer = NULL;
+    }
+    s_jpeg_size = 0;
+    s_jpeg_dirty = true;
     return ESP_OK;
 }
 
-uint8_t* camera_get_rgb_buffer(void)
+uint8_t *camera_get_rgb_buffer(void)
 {
     return s_rgb_buffer;
 }
@@ -209,34 +196,65 @@ size_t camera_get_buffer_size(void)
     return s_buffer_size;
 }
 
+esp_err_t camera_get_jpeg_buffer(uint8_t **jpeg_buf, size_t *jpeg_len)
+{
+    if (!jpeg_buf || !jpeg_len) return ESP_ERR_INVALID_ARG;
+    if (!s_initialized || !s_rgb_buffer) return ESP_ERR_INVALID_STATE;
+
+    if (s_jpeg_dirty || !s_jpeg_buffer) {
+        if (s_jpeg_buffer) {
+            free(s_jpeg_buffer);
+            s_jpeg_buffer = NULL;
+            s_jpeg_size = 0;
+        }
+
+        if (!fmt2jpg(s_rgb_buffer,
+                     s_buffer_size,
+                     IMG_WIDTH,
+                     IMG_HEIGHT,
+                     PIXFORMAT_RGB888,
+                     80,
+                     &s_jpeg_buffer,
+                     &s_jpeg_size)) {
+            ESP_LOGE(TAG, "JPEG conversion failed");
+            return ESP_FAIL;
+        }
+
+        s_jpeg_dirty = false;
+        ESP_LOGI(TAG, "JPEG prepared: %d bytes", (int)s_jpeg_size);
+    }
+
+    *jpeg_buf = s_jpeg_buffer;
+    *jpeg_len = s_jpeg_size;
+    return ESP_OK;
+}
+
 bool camera_detect_object(void)
 {
     if (!s_initialized || !s_prev_gray) return false;
 
-    camera_fb_t* fb = esp_camera_fb_get();
+    camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) return false;
 
     bool motion_detected = false;
 
     if (fb->format == PIXFORMAT_RGB565) {
-        const uint16_t* pixels = (const uint16_t*)fb->buf;
+        const uint16_t *pixels = (const uint16_t *)fb->buf;
         int motion_pixels = 0;
-        int w2 = IMG_WIDTH / 2;
+        const int w2 = IMG_WIDTH / 2;
 
-        // 分析 ROI 区域，降采样 2x
         for (int y = ROI_Y_START; y < ROI_Y_START + ROI_HEIGHT; y += 2) {
             for (int x = ROI_X_START; x < ROI_X_START + ROI_WIDTH; x += 2) {
-                int idx = y * IMG_WIDTH + x;
+                const int idx = y * IMG_WIDTH + x;
                 uint16_t p = pixels[idx];
-                p = (p >> 8) | (p << 8);  // 字节序
+                p = (p >> 8) | (p << 8);
 
-                uint8_t r = ((p >> 11) & 0x1F) << 3;
-                uint8_t g = ((p >> 5)  & 0x3F) << 2;
-                uint8_t b = ( p        & 0x1F) << 3;
-                // 灰度值 (BT.601)
-                uint8_t gray = (uint8_t)((r * 77 + g * 150 + b * 29) >> 8);
+                const uint8_t r = ((p >> 11) & 0x1F) << 3;
+                const uint8_t g = ((p >> 5)  & 0x3F) << 2;
+                const uint8_t b = ( p        & 0x1F) << 3;
+                const uint8_t gray = (uint8_t)((r * 77 + g * 150 + b * 29) >> 8);
 
-                int prev_idx = (y / 2) * w2 + (x / 2);
+                const int prev_idx = (y / 2) * w2 + (x / 2);
                 if (prev_idx < (int)((IMG_WIDTH / 2) * (IMG_HEIGHT / 2))) {
                     if (s_has_prev_frame) {
                         int diff = (int)gray - (int)s_prev_gray[prev_idx];
@@ -255,7 +273,7 @@ bool camera_detect_object(void)
         } else {
             motion_detected = (motion_pixels > MOTION_PIXEL_COUNT);
             if (motion_detected) {
-                ESP_LOGI(TAG, "运动检测: %d 像素变化", motion_pixels);
+                ESP_LOGI(TAG, "Motion detected: %d pixels changed", motion_pixels);
             }
         }
     }
@@ -273,12 +291,14 @@ void camera_get_roi_avg_color(uint8_t *r, uint8_t *g, uint8_t *b)
         return;
     }
 
-    uint32_t sum_r = 0, sum_g = 0, sum_b = 0;
+    uint32_t sum_r = 0;
+    uint32_t sum_g = 0;
+    uint32_t sum_b = 0;
     int count = 0;
 
     for (int y = ROI_Y_START; y < ROI_Y_START + ROI_HEIGHT; y++) {
         for (int x = ROI_X_START; x < ROI_X_START + ROI_WIDTH; x++) {
-            int idx = (y * IMG_WIDTH + x) * 3;
+            const int idx = (y * IMG_WIDTH + x) * 3;
             sum_r += s_rgb_buffer[idx + 0];
             sum_g += s_rgb_buffer[idx + 1];
             sum_b += s_rgb_buffer[idx + 2];
@@ -291,6 +311,8 @@ void camera_get_roi_avg_color(uint8_t *r, uint8_t *g, uint8_t *b)
         *g = (uint8_t)(sum_g / count);
         *b = (uint8_t)(sum_b / count);
     } else {
-        *r = *g = *b = 0;
+        *r = 0;
+        *g = 0;
+        *b = 0;
     }
 }

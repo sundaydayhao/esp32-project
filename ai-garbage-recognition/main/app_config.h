@@ -48,6 +48,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define ONLINE_API_AUTH_TOKEN             ""
+#define ONLINE_API_LOCALE                 "zh-CN"
+#define ONLINE_API_STANDARD               "CN-4"
+#define ONLINE_API_PROMPT_VERSION         "garbage-cn-v1"
+#define ONLINE_CLASSIFIER_USE_LOCAL_LOOKUP 0
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -252,7 +258,7 @@ typedef enum {
 } recognition_mode_t;
 
 // 当前识别模式 (修改此处切换模式)
-#define RECOGNITION_MODE    MODE_COLOR_CARD
+#define RECOGNITION_MODE    MODE_TFLITE_ONLINE
 
 // ============================================================
 // WiFi 配置 / WiFi Configuration

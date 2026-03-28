@@ -1,6 +1,6 @@
 /**
  * wifi_manager.cpp
- * WiFi 连接管理模块实现 / WiFi Manager Implementation
+ * WiFi Manager Implementation
  */
 
 #include "wifi_manager.h"
@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 #include <string.h>
+#include <stdio.h>
 
 static const char* TAG = "WIFI";
 
@@ -25,38 +26,29 @@ static bool s_initialized = false;
 static bool s_connected   = false;
 static int  s_retry_count = 0;
 
-// ============================================================
-// 事件处理 / Event Handler
-// ============================================================
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
-
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         s_connected = false;
         if (s_retry_count < WIFI_MAX_RETRY) {
             esp_wifi_connect();
             s_retry_count++;
-            ESP_LOGW(TAG, "WiFi 重连中... (%d/%d)", s_retry_count, WIFI_MAX_RETRY);
+            ESP_LOGW(TAG, "WiFi reconnecting... (%d/%d)", s_retry_count, WIFI_MAX_RETRY);
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
-            ESP_LOGE(TAG, "WiFi 连接失败");
+            ESP_LOGE(TAG, "WiFi connection failed");
         }
-
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
-        ESP_LOGI(TAG, "获取 IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_count = 0;
         s_connected   = true;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
-
-// ============================================================
-// 公共接口 / Public Interface
-// ============================================================
 
 esp_err_t wifi_connect(const char *ssid, const char *password, uint32_t timeout_ms)
 {
@@ -83,7 +75,7 @@ esp_err_t wifi_connect(const char *ssid, const char *password, uint32_t timeout_
     }
 
     wifi_config_t wifi_config = {};
-    strncpy((char*)wifi_config.sta.ssid,     ssid,     sizeof(wifi_config.sta.ssid) - 1);
+    strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
     strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
@@ -91,7 +83,7 @@ esp_err_t wifi_connect(const char *ssid, const char *password, uint32_t timeout_
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "连接 WiFi: %s", ssid);
+    ESP_LOGI(TAG, "Connecting WiFi: %s", ssid);
 
     EventBits_t bits = xEventGroupWaitBits(
         s_wifi_event_group,
@@ -100,12 +92,12 @@ esp_err_t wifi_connect(const char *ssid, const char *password, uint32_t timeout_
         pdMS_TO_TICKS(timeout_ms));
 
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "WiFi 连接成功: %s", ssid);
+        ESP_LOGI(TAG, "WiFi connected: %s", ssid);
         return ESP_OK;
-    } else {
-        ESP_LOGE(TAG, "WiFi 连接超时或失败");
-        return ESP_FAIL;
     }
+
+    ESP_LOGE(TAG, "WiFi connect timeout or failure");
+    return ESP_FAIL;
 }
 
 void wifi_disconnect(void)
@@ -114,7 +106,7 @@ void wifi_disconnect(void)
         esp_wifi_disconnect();
         esp_wifi_stop();
         s_connected = false;
-        ESP_LOGI(TAG, "WiFi 已断开");
+        ESP_LOGI(TAG, "WiFi disconnected");
     }
 }
 
@@ -123,7 +115,6 @@ bool wifi_is_connected(void)
     return s_connected;
 }
 
-// HTTP 响应缓冲区
 static char*  s_http_buf     = NULL;
 static size_t s_http_buf_len = 0;
 static size_t s_http_written = 0;
@@ -144,10 +135,17 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-esp_err_t http_get(const char *url, char *response, size_t resp_len)
+static esp_err_t http_request(esp_http_client_method_t method,
+                              const char *url,
+                              const void *body,
+                              size_t body_len,
+                              const char *content_type,
+                              const char *auth_token,
+                              char *response,
+                              size_t resp_len)
 {
     if (!s_connected) {
-        ESP_LOGW(TAG, "WiFi 未连接，无法发送 HTTP 请求");
+        ESP_LOGW(TAG, "WiFi not connected, HTTP request skipped");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -156,24 +154,83 @@ esp_err_t http_get(const char *url, char *response, size_t resp_len)
     s_http_written = 0;
     if (response) response[0] = '\0';
 
-    esp_http_client_config_t config = {
-        .url            = url,
-        .event_handler  = http_event_handler,
-        .timeout_ms     = 8000,
-        .buffer_size    = 1024,
-    };
+    esp_http_client_config_t config = {};
+    config.url = url;
+    config.method = method;
+    config.event_handler = http_event_handler;
+    config.timeout_ms = 8000;
+    config.buffer_size = 1024;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
-    esp_err_t ret = esp_http_client_perform(client);
+    esp_http_client_set_header(client, "Accept", "application/json");
 
+    if (content_type) {
+        esp_http_client_set_header(client, "Content-Type", content_type);
+    }
+
+    if (auth_token && auth_token[0] != '\0') {
+        char auth_header[192];
+        snprintf(auth_header, sizeof(auth_header), "Bearer %s", auth_token);
+        esp_http_client_set_header(client, "Authorization", auth_header);
+    }
+
+    if (body && body_len > 0) {
+        esp_http_client_set_post_field(client, (const char *)body, (int)body_len);
+    }
+
+    esp_err_t ret = esp_http_client_perform(client);
     if (ret == ESP_OK) {
-        int status = esp_http_client_get_status_code(client);
-        ESP_LOGI(TAG, "HTTP GET 完成: 状态=%d 长度=%d", status, (int)s_http_written);
+        const int status = esp_http_client_get_status_code(client);
+        ESP_LOGI(TAG, "HTTP %s complete: status=%d length=%d",
+                 method == HTTP_METHOD_GET ? "GET" : "POST",
+                 status,
+                 (int)s_http_written);
+        if (status < 200 || status >= 300) {
+            ret = ESP_FAIL;
+        }
     } else {
-        ESP_LOGE(TAG, "HTTP GET 失败: %d", ret);
+        ESP_LOGE(TAG, "HTTP request failed: %d", ret);
     }
 
     esp_http_client_cleanup(client);
     s_http_buf = NULL;
     return ret;
+}
+
+esp_err_t http_get(const char *url, char *response, size_t resp_len)
+{
+    return http_request(HTTP_METHOD_GET, url, NULL, 0, NULL, NULL, response, resp_len);
+}
+
+esp_err_t http_post(const char *url,
+                    const void *body,
+                    size_t body_len,
+                    const char *content_type,
+                    const char *auth_token,
+                    char *response,
+                    size_t resp_len)
+{
+    return http_request(HTTP_METHOD_POST,
+                        url,
+                        body,
+                        body_len,
+                        content_type,
+                        auth_token,
+                        response,
+                        resp_len);
+}
+
+esp_err_t http_post_json(const char *url,
+                         const char *json_body,
+                         const char *auth_token,
+                         char *response,
+                         size_t resp_len)
+{
+    return http_post(url,
+                     json_body,
+                     strlen(json_body),
+                     "application/json",
+                     auth_token,
+                     response,
+                     resp_len);
 }

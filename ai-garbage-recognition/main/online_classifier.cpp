@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdio.h>
 
 static const char* TAG = "ONLINE_CLS";
 
@@ -27,7 +28,7 @@ static const char* TAG = "ONLINE_CLS";
 // 在线 API 配置 / Online API Configuration
 // 可替换为自己的服务器或百度AI接口
 // ============================================================
-#define API_BASE_URL  "http://your-server.com/garbage/classify"
+#define API_BASE_URL  ONLINE_API_URL
 // 百度AI垃圾分类示例 (需申请 API Key):
 // #define USE_BAIDU_API
 // #define BAIDU_API_KEY    "your_api_key"
@@ -311,6 +312,119 @@ static bool local_lookup(const char *object_name, garbage_type_t *result)
  * 解析 JSON 响应中的垃圾类型
  * 响应格式: {"type":"recyclable","name_cn":"可回收物","confidence":95}
  */
+static void json_escape_string(const char *src, char *dst, size_t dst_len)
+{
+    size_t j = 0;
+
+    if (dst_len == 0) return;
+
+    for (size_t i = 0; src[i] != '\0' && j + 2 < dst_len; ++i) {
+        const char c = src[i];
+        if (c == '\\' || c == '"') {
+            dst[j++] = '\\';
+            dst[j++] = c;
+        } else if (c == '\n') {
+            dst[j++] = '\\';
+            dst[j++] = 'n';
+        } else if (c == '\r') {
+            dst[j++] = '\\';
+            dst[j++] = 'r';
+        } else if (c == '\t') {
+            dst[j++] = '\\';
+            dst[j++] = 't';
+        } else if ((unsigned char)c >= 0x20) {
+            dst[j++] = c;
+        }
+    }
+
+    dst[j] = '\0';
+}
+
+static bool extract_json_string(const char *json, const char *key,
+                                char *out, size_t out_len)
+{
+    char pattern[32];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+
+    const char *p = strstr(json, pattern);
+    if (!p) return false;
+
+    p = strchr(p, ':');
+    if (!p) return false;
+    p++;
+
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+    if (*p != '"') return false;
+    p++;
+
+    size_t j = 0;
+    while (*p && *p != '"' && j + 1 < out_len) {
+        if (*p == '\\' && p[1] != '\0') {
+            p++;
+        }
+        out[j++] = *p++;
+    }
+    out[j] = '\0';
+    return j > 0;
+}
+
+static bool extract_json_int(const char *json, const char *key, int *value)
+{
+    char pattern[32];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+
+    const char *p = strstr(json, pattern);
+    if (!p) return false;
+
+    p = strchr(p, ':');
+    if (!p) return false;
+    p++;
+
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+    *value = atoi(p);
+    return true;
+}
+
+static bool map_type_string(const char *type_str, garbage_type_t *result)
+{
+    char lower[64];
+    str_to_lower(type_str, lower, sizeof(lower));
+
+    if (strstr(lower, "hazardous") != NULL ||
+        strstr(lower, "harmful") != NULL ||
+        strstr(type_str, "有害") != NULL) {
+        *result = GARBAGE_HAZARDOUS;
+        return true;
+    }
+
+    if (strstr(lower, "recyclable") != NULL ||
+        strstr(lower, "recycle") != NULL ||
+        strstr(type_str, "可回收") != NULL) {
+        *result = GARBAGE_RECYCLABLE;
+        return true;
+    }
+
+    if (strstr(lower, "kitchen") != NULL ||
+        strstr(lower, "food") != NULL ||
+        strstr(lower, "wet") != NULL ||
+        strstr(type_str, "厨余") != NULL ||
+        strstr(type_str, "湿") != NULL) {
+        *result = GARBAGE_KITCHEN;
+        return true;
+    }
+
+    if (strstr(lower, "other") != NULL ||
+        strstr(lower, "residual") != NULL ||
+        strstr(lower, "dry") != NULL ||
+        strstr(type_str, "其他") != NULL ||
+        strstr(type_str, "干") != NULL) {
+        *result = GARBAGE_OTHER;
+        return true;
+    }
+
+    return false;
+}
+
 static bool parse_api_response(const char *json, garbage_type_t *result, int *confidence)
 {
     // 简单 JSON 解析 (不依赖 cJSON 库)
