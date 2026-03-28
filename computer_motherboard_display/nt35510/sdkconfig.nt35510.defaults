@@ -1,9 +1,6 @@
 # Test/build-only default config for the generic NT35510 I80 path.
 # Update these pins to match the actual board before flashing.
 
-# CONFIG_DESK_CLOCK_BOARD_WAVESHARE_7 is not set
-CONFIG_DESK_CLOCK_BOARD_NT35510=y
-
 CONFIG_DESK_CLOCK_NT35510_H_RES=800
 CONFIG_DESK_CLOCK_NT35510_V_RES=480
 CONFIG_DESK_CLOCK_NT35510_PIXEL_CLOCK_HZ=8000000

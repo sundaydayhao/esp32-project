@@ -8,25 +8,19 @@
 #include "esp_heap_caps.h"
 #include "esp_lcd_io_i80.h"
 #include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_rgb.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
-#include "waveshare_board.h"
 
 static esp_lcd_panel_handle_t s_panel = NULL;
-#if LCD_USE_I80_INTERFACE
 static esp_lcd_panel_io_handle_t s_panel_io = NULL;
 static esp_lcd_i80_bus_handle_t s_i80_bus = NULL;
-#endif
 static uint16_t *s_fb[2] = {NULL, NULL};
 static size_t s_fb_size_bytes = 0;
 static lcd_driver_flush_done_cb_t s_flush_done_cb = NULL;
 static void *s_flush_done_user_ctx = NULL;
 static bool s_backlight_warned = false;
-#if LCD_USE_I80_INTERFACE
 static bool s_nt35510_backlight_ready = false;
 static bool s_nt35510_power_ready = false;
-#endif
 static bool s_direct_mode = false;
 static bool s_need_rgb565_byte_swap = false;
 
@@ -43,19 +37,6 @@ static bool IRAM_ATTR notify_flush_done(void)
     return false;
 }
 
-#if LCD_USE_RGB_INTERFACE
-static bool IRAM_ATTR on_rgb_color_trans_done(esp_lcd_panel_handle_t panel,
-                                              const esp_lcd_rgb_panel_event_data_t *edata,
-                                              void *ctx)
-{
-    (void)panel;
-    (void)edata;
-    (void)ctx;
-    return notify_flush_done();
-}
-#endif
-
-#if LCD_USE_I80_INTERFACE
 static bool IRAM_ATTR on_i80_color_trans_done(esp_lcd_panel_io_handle_t io,
                                               esp_lcd_panel_io_event_data_t *edata,
                                               void *user_ctx)
@@ -65,7 +46,6 @@ static bool IRAM_ATTR on_i80_color_trans_done(esp_lcd_panel_io_handle_t io,
     (void)user_ctx;
     return notify_flush_done();
 }
-#endif
 
 static void fill_test_pattern_lines(uint16_t *fb, uint32_t pattern_index, int y_start, int line_count)
 {
@@ -124,7 +104,6 @@ static void fill_test_pattern_lines(uint16_t *fb, uint32_t pattern_index, int y_
     }
 }
 
-#if LCD_USE_I80_INTERFACE
 static void swap_rgb565_bytes(uint16_t *buf, size_t pixel_count)
 {
     for (size_t i = 0; i < pixel_count; i++) {
@@ -141,9 +120,7 @@ static uint64_t gpio_pin_mask_from_num(gpio_num_t pin)
     }
     return mask;
 }
-#endif
 
-#if LCD_USE_I80_INTERFACE
 static esp_err_t nt35510_backlight_init(void)
 {
     if (s_nt35510_backlight_ready || LCD_I80_PIN_BACKLIGHT < 0) {
@@ -207,86 +184,7 @@ static esp_err_t nt35510_set_backlight(bool display_on)
     );
     return ESP_OK;
 }
-#endif
 
-#if LCD_USE_RGB_INTERFACE
-static esp_err_t init_waveshare_rgb_panel(void)
-{
-    ESP_RETURN_ON_ERROR(waveshare_board_init(), TAG_LCD, "board init failed");
-    ESP_RETURN_ON_ERROR(waveshare_board_set_lcd_state(false), TAG_LCD, "board lcd-off failed");
-
-    ESP_LOGI(TAG_LCD, "Initialize RGB LCD %dx%d", LCD_H_RES, LCD_V_RES);
-    ESP_LOGI(TAG_LCD, "Using %s RGB pin map", DISPLAY_BOARD_NAME);
-    ESP_LOGI(TAG_LCD, "Timing: pclk=%d hsync=%d/%d/%d vsync=%d/%d/%d",
-             LCD_PCLK_HZ,
-             LCD_HSYNC_BACK_PORCH, LCD_HSYNC_FRONT_PORCH, LCD_HSYNC_PULSE_WIDTH,
-             LCD_VSYNC_BACK_PORCH, LCD_VSYNC_FRONT_PORCH, LCD_VSYNC_PULSE_WIDTH);
-
-    esp_lcd_rgb_panel_config_t cfg = {
-        .clk_src = LCD_CLK_SRC_DEFAULT,
-        .timings = {
-            .pclk_hz = LCD_PCLK_HZ,
-            .h_res = LCD_H_RES,
-            .v_res = LCD_V_RES,
-            .hsync_back_porch = LCD_HSYNC_BACK_PORCH,
-            .hsync_front_porch = LCD_HSYNC_FRONT_PORCH,
-            .hsync_pulse_width = LCD_HSYNC_PULSE_WIDTH,
-            .vsync_back_porch = LCD_VSYNC_BACK_PORCH,
-            .vsync_front_porch = LCD_VSYNC_FRONT_PORCH,
-            .vsync_pulse_width = LCD_VSYNC_PULSE_WIDTH,
-            .flags.pclk_active_neg = 1,
-        },
-        .data_width = 16,
-        .num_fbs = LCD_NUM_FB,
-        .bounce_buffer_size_px = LCD_H_RES * 10,
-        .psram_trans_align = 64,
-        .hsync_gpio_num = LCD_PIN_HSYNC,
-        .vsync_gpio_num = LCD_PIN_VSYNC,
-        .de_gpio_num = LCD_PIN_DE,
-        .pclk_gpio_num = LCD_PIN_PCLK,
-        .disp_gpio_num = GPIO_NUM_NC,
-        .data_gpio_nums = {
-            LCD_PIN_D0, LCD_PIN_D1, LCD_PIN_D2, LCD_PIN_D3,
-            LCD_PIN_D4, LCD_PIN_D5, LCD_PIN_D6, LCD_PIN_D7,
-            LCD_PIN_D8, LCD_PIN_D9, LCD_PIN_D10, LCD_PIN_D11,
-            LCD_PIN_D12, LCD_PIN_D13, LCD_PIN_D14, LCD_PIN_D15,
-        },
-        .flags.fb_in_psram = 1,
-        .flags.double_fb = 1,
-    };
-
-    ESP_RETURN_ON_ERROR(esp_lcd_new_rgb_panel(&cfg, &s_panel), TAG_LCD, "create rgb panel failed");
-
-    const esp_lcd_rgb_panel_event_callbacks_t cbs = {
-        .on_color_trans_done = on_rgb_color_trans_done,
-    };
-    ESP_ERROR_CHECK(esp_lcd_rgb_panel_register_event_callbacks(s_panel, &cbs, NULL));
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(s_panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(s_panel));
-
-    esp_err_t disp_ret = esp_lcd_panel_disp_on_off(s_panel, true);
-    if (disp_ret == ESP_ERR_NOT_SUPPORTED) {
-        ESP_LOGI(TAG_LCD, "Panel DISP control is not wired to a GPIO; continuing");
-    } else {
-        ESP_ERROR_CHECK(disp_ret);
-    }
-
-    ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(
-        s_panel, 2, (void **)&s_fb[0], (void **)&s_fb[1]));
-
-    s_fb_size_bytes = (size_t)LCD_H_RES * LCD_V_RES * sizeof(uint16_t);
-    memset(s_fb[0], 0, s_fb_size_bytes);
-    memset(s_fb[1], 0, s_fb_size_bytes);
-    s_direct_mode = true;
-    s_need_rgb565_byte_swap = false;
-
-    lcd_driver_set_brightness(100);
-    ESP_LOGI(TAG_LCD, "RGB LCD initialized FB0=%p FB1=%p", s_fb[0], s_fb[1]);
-    return ESP_OK;
-}
-#endif
-
-#if LCD_USE_I80_INTERFACE
 static void log_nt35510_pin_configuration(void)
 {
     ESP_LOGI(TAG_LCD, "NT35510 pins: WR=%d CS=%d DC=%d RST=%d BK=%d PWR=%d",
@@ -352,7 +250,7 @@ static esp_err_t init_nt35510_i80_panel(void)
 #else
              "off");
 #endif
-    ESP_LOGI(TAG_LCD, "If any pin shows -1, update sdkconfig or load sdkconfig.nt35510.defaults before building");
+    ESP_LOGI(TAG_LCD, "If any pin shows -1, update sdkconfig before building");
 
     const esp_lcd_i80_bus_config_t bus_config = {
         .clk_src = LCD_CLK_SRC_DEFAULT,
@@ -463,17 +361,10 @@ static esp_err_t init_nt35510_i80_panel(void)
              s_fb[0], s_fb[1], (unsigned)s_fb_size_bytes);
     return ESP_OK;
 }
-#endif
 
 esp_err_t lcd_driver_init(void)
 {
-#if LCD_USE_RGB_INTERFACE
-    return init_waveshare_rgb_panel();
-#elif LCD_USE_I80_INTERFACE
     return init_nt35510_i80_panel();
-#else
-    return ESP_ERR_NOT_SUPPORTED;
-#endif
 }
 
 esp_lcd_panel_handle_t lcd_driver_get_panel(void)
@@ -512,20 +403,6 @@ esp_err_t lcd_driver_show_test_pattern(uint32_t pattern_index)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (s_direct_mode) {
-        for (size_t i = 0; i < LCD_NUM_FB; i++) {
-            fill_test_pattern_lines(s_fb[i], pattern_index, 0, LCD_V_RES);
-        }
-
-        uint32_t fb_index = pattern_index % LCD_NUM_FB;
-        ESP_LOGI(TAG_LCD, "Display diagnostic pattern #%lu using FB%lu=%p",
-                 (unsigned long)(pattern_index % 4),
-                 (unsigned long)fb_index,
-                 s_fb[fb_index]);
-        return esp_lcd_panel_draw_bitmap(s_panel, 0, 0, LCD_H_RES, LCD_V_RES, s_fb[fb_index]);
-    }
-
-#if LCD_USE_I80_INTERFACE
     for (int y = 0, chunk = 0; y < LCD_V_RES; y += LCD_I80_DRAW_BUF_LINES) {
         int lines = LCD_I80_DRAW_BUF_LINES;
         if (y + lines > LCD_V_RES) {
@@ -547,9 +424,6 @@ esp_err_t lcd_driver_show_test_pattern(uint32_t pattern_index)
     ESP_LOGI(TAG_LCD, "Display diagnostic pattern #%lu via I80 partial flush",
              (unsigned long)(pattern_index % 4));
     return ESP_OK;
-#else
-    return ESP_ERR_NOT_SUPPORTED;
-#endif
 }
 
 esp_err_t lcd_driver_register_flush_done_callback(lcd_driver_flush_done_cb_t cb, void *user_ctx)
@@ -563,13 +437,6 @@ void lcd_driver_set_brightness(uint8_t pct)
 {
     const bool display_on = pct > 0;
 
-#if LCD_USE_RGB_INTERFACE
-    if (!s_backlight_warned) {
-        ESP_LOGW(TAG_LCD, "Backlight control is on CH422G EXIO2 for this board");
-        s_backlight_warned = true;
-    }
-    ESP_ERROR_CHECK(waveshare_board_set_lcd_state(display_on));
-#elif LCD_USE_I80_INTERFACE
     if (LCD_I80_PIN_BACKLIGHT < 0) {
         if (!s_backlight_warned) {
             ESP_LOGW(TAG_LCD, "NT35510 board backlight pin is not configured");
@@ -578,5 +445,4 @@ void lcd_driver_set_brightness(uint8_t pct)
         return;
     }
     ESP_ERROR_CHECK(nt35510_set_backlight(display_on));
-#endif
 }

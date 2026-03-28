@@ -13,58 +13,9 @@
 #define DEVICE_NAME         "ESP32-S3 Desk Clock"
 
 /* ================================================================
- * Display / board selection
+ * Display
  * ================================================================ */
-#if !defined(CONFIG_DESK_CLOCK_BOARD_WAVESHARE_7) && !defined(CONFIG_DESK_CLOCK_BOARD_NT35510)
-#define CONFIG_DESK_CLOCK_BOARD_WAVESHARE_7 1
-#endif
-
-#if CONFIG_DESK_CLOCK_BOARD_WAVESHARE_7
-
-#define DISPLAY_BOARD_NAME          "Waveshare ESP32-S3-Touch-LCD-7"
-#define LCD_USE_RGB_INTERFACE       1
-#define LCD_USE_I80_INTERFACE       0
-
-#define LCD_H_RES                   800
-#define LCD_V_RES                   480
-#define LCD_HSYNC_BACK_PORCH        8
-#define LCD_HSYNC_FRONT_PORCH       8
-#define LCD_HSYNC_PULSE_WIDTH       4
-#define LCD_VSYNC_BACK_PORCH        16
-#define LCD_VSYNC_FRONT_PORCH       16
-#define LCD_VSYNC_PULSE_WIDTH       4
-#define LCD_PCLK_HZ                 (16 * 1000 * 1000)
-
-#define LCD_PIN_PCLK                GPIO_NUM_7
-#define LCD_PIN_VSYNC               GPIO_NUM_3
-#define LCD_PIN_HSYNC               GPIO_NUM_46
-#define LCD_PIN_DE                  GPIO_NUM_5
-#define LCD_PIN_BACKLIGHT           GPIO_NUM_NC
-
-#define LCD_PIN_D0                  GPIO_NUM_14
-#define LCD_PIN_D1                  GPIO_NUM_38
-#define LCD_PIN_D2                  GPIO_NUM_18
-#define LCD_PIN_D3                  GPIO_NUM_17
-#define LCD_PIN_D4                  GPIO_NUM_10
-#define LCD_PIN_D5                  GPIO_NUM_39
-#define LCD_PIN_D6                  GPIO_NUM_0
-#define LCD_PIN_D7                  GPIO_NUM_45
-#define LCD_PIN_D8                  GPIO_NUM_48
-#define LCD_PIN_D9                  GPIO_NUM_47
-#define LCD_PIN_D10                 GPIO_NUM_21
-#define LCD_PIN_D11                 GPIO_NUM_1
-#define LCD_PIN_D12                 GPIO_NUM_2
-#define LCD_PIN_D13                 GPIO_NUM_42
-#define LCD_PIN_D14                 GPIO_NUM_41
-#define LCD_PIN_D15                 GPIO_NUM_40
-
-#define LCD_NUM_FB                  2
-
-#elif CONFIG_DESK_CLOCK_BOARD_NT35510
-
 #define DISPLAY_BOARD_NAME          "Generic NT35510 I80 Board"
-#define LCD_USE_RGB_INTERFACE       0
-#define LCD_USE_I80_INTERFACE       1
 
 #define LCD_H_RES                   CONFIG_DESK_CLOCK_NT35510_H_RES
 #define LCD_V_RES                   CONFIG_DESK_CLOCK_NT35510_V_RES
@@ -112,15 +63,26 @@
 #define LCD_I80_PIN_D15             GPIO_NUM_NC
 #endif
 
-#else
-#error "Unsupported desk clock board selection"
-#endif
-
 #define BOOT_MODE_LCD_DIAGNOSTIC    0
 #define BOOT_MODE_UI_ONLY           1
 #define BOOT_MODE_FULL_APP          2
 #define SYSTEM_BOOT_MODE            BOOT_MODE_FULL_APP
 #define LCD_DIAGNOSTIC_SWITCH_MS    1000
+
+/* ================================================================
+ * Audio / MAX98357A
+ * ================================================================ */
+#define AUDIO_I2S_BCLK_PIN          GPIO_NUM_47
+#define AUDIO_I2S_WS_PIN            GPIO_NUM_48
+#define AUDIO_I2S_DOUT_PIN          GPIO_NUM_46
+#define AUDIO_I2S_SAMPLE_RATE_HZ    22050
+#define AUDIO_TONE_FREQ_HZ          1200
+#define AUDIO_TONE_DURATION_MS      120
+#define AUDIO_TONE_VOLUME_PCT       18
+#define AUDIO_ANNOUNCE_START_HOUR   8
+#define AUDIO_ANNOUNCE_END_HOUR     20
+#define AUDIO_ANNOUNCE_POLL_MS      1000
+#define AUDIO_SEGMENT_GAP_MS        80
 
 /* ================================================================
  * WiFi
@@ -174,6 +136,7 @@
 #define TAG_WEATHER     "WEATHER"
 #define TAG_UI          "UI"
 #define TAG_STORE       "STORE"
+#define TAG_AUDIO       "AUDIO"
 
 /* ================================================================
  * Tasks
@@ -182,7 +145,9 @@
 #define TASK_STACK_LCD_DIAG     (4  * 1024)
 #define TASK_STACK_WEATHER      (16 * 1024)
 #define TASK_STACK_NTP          (4  * 1024)
+#define TASK_STACK_CHIME        (6  * 1024)
 #define TASK_PRIO_LCD_DIAG      3
 #define TASK_PRIO_UI            7
 #define TASK_PRIO_WEATHER       4
 #define TASK_PRIO_NTP           5
+#define TASK_PRIO_CHIME         4

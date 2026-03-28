@@ -1,8 +1,9 @@
 idf_component_register(
     SRCS
         "main.c"
+        "audio/audio_output.c"
+        "audio/hourly_chime.c"
         "lcd/lcd_driver.c"
-        "lcd/waveshare_board.c"
         "net/wifi_manager.c"
         "net/ntp_client.c"
         "net/weather_client.c"
@@ -11,6 +12,7 @@ idf_component_register(
         "storage/config_store.c"
     INCLUDE_DIRS
         "."
+        "audio"
         "lcd"
         "net"
         "ui"
@@ -18,7 +20,7 @@ idf_component_register(
     REQUIRES
         esp_lcd
         esp_driver_gpio
-        esp_driver_i2c
+        esp_driver_i2s
         esp_wifi
         esp_http_client
         lwip
@@ -33,4 +35,20 @@ idf_component_register(
         mbedtls
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
+    EMBED_FILES
+        "audio/tts/prefix_beijing_time.wav"
+        "audio/tts/suffix_oclock.wav"
+        "audio/tts/hour_08.wav"
+        "audio/tts/hour_09.wav"
+        "audio/tts/hour_10.wav"
+        "audio/tts/hour_11.wav"
+        "audio/tts/hour_12.wav"
+        "audio/tts/hour_13.wav"
+        "audio/tts/hour_14.wav"
+        "audio/tts/hour_15.wav"
+        "audio/tts/hour_16.wav"
+        "audio/tts/hour_17.wav"
+        "audio/tts/hour_18.wav"
+        "audio/tts/hour_19.wav"
+        "audio/tts/hour_20.wav"
 )

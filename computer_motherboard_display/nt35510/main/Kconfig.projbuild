@@ -1,221 +1,203 @@
 menu "Desk Clock Hardware"
 
-    choice DESK_CLOCK_BOARD_TYPE
-        prompt "Development board"
-        default DESK_CLOCK_BOARD_WAVESHARE_7
+    config DESK_CLOCK_NT35510_H_RES
+        int "Horizontal resolution"
+        range 1 2048
+        default 800
+
+    config DESK_CLOCK_NT35510_V_RES
+        int "Vertical resolution"
+        range 1 2048
+        default 480
+
+    config DESK_CLOCK_NT35510_PIXEL_CLOCK_HZ
+        int "I80 pixel clock (Hz)"
+        range 1 40000000
+        default 8000000
         help
-            Select the target development board. The default option keeps the
-            existing Waveshare 7-inch RGB LCD path unchanged.
+            Start with a conservative clock for generic NT35510 boards.
+            Higher values can improve throughput, but often introduce
+            color artifacts or ghosting on long 16-bit buses.
 
-        config DESK_CLOCK_BOARD_WAVESHARE_7
-            bool "Waveshare ESP32-S3-Touch-LCD-7"
+    config DESK_CLOCK_NT35510_DRAW_BUF_LINES
+        int "LVGL partial buffer lines"
+        range 1 480
+        default 40
+        help
+            Number of lines in each LVGL draw buffer for the NT35510 path.
+            Higher values improve throughput but consume more PSRAM.
 
-        config DESK_CLOCK_BOARD_NT35510
-            bool "Generic NT35510 I80 board"
+    choice DESK_CLOCK_NT35510_I80_BUS_WIDTH_CHOICE
+        prompt "I80 bus width"
+        default DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
+
+        config DESK_CLOCK_NT35510_I80_BUS_WIDTH_8
+            bool "8-bit"
+
+        config DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
+            bool "16-bit"
     endchoice
 
-    if DESK_CLOCK_BOARD_NT35510
+    config DESK_CLOCK_NT35510_I80_BUS_WIDTH
+        int
+        default 8 if DESK_CLOCK_NT35510_I80_BUS_WIDTH_8
+        default 16 if DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
 
-        config DESK_CLOCK_NT35510_H_RES
-            int "Horizontal resolution"
-            range 1 2048
-            default 800
+    choice DESK_CLOCK_NT35510_COLOR_ORDER
+        prompt "Panel color order"
+        default DESK_CLOCK_NT35510_COLOR_ORDER_BGR
 
-        config DESK_CLOCK_NT35510_V_RES
-            int "Vertical resolution"
-            range 1 2048
-            default 480
+        config DESK_CLOCK_NT35510_COLOR_ORDER_RGB
+            bool "RGB"
 
-        config DESK_CLOCK_NT35510_PIXEL_CLOCK_HZ
-            int "I80 pixel clock (Hz)"
-            range 1 40000000
-            default 8000000
-            help
-                Start with a conservative clock for generic NT35510 boards.
-                Higher values can improve throughput, but often introduce
-                color artifacts or ghosting on long 16-bit buses.
+        config DESK_CLOCK_NT35510_COLOR_ORDER_BGR
+            bool "BGR"
+    endchoice
 
-        config DESK_CLOCK_NT35510_DRAW_BUF_LINES
-            int "LVGL partial buffer lines"
-            range 1 480
-            default 40
-            help
-                Number of lines in each LVGL draw buffer for the NT35510 path.
-                Higher values improve throughput but consume more PSRAM.
+    config DESK_CLOCK_NT35510_SWAP_XY
+        bool "Swap X/Y"
+        default y
 
-        choice DESK_CLOCK_NT35510_I80_BUS_WIDTH_CHOICE
-            prompt "I80 bus width"
-            default DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
+    config DESK_CLOCK_NT35510_MIRROR_X
+        bool "Mirror X"
+        default y
 
-            config DESK_CLOCK_NT35510_I80_BUS_WIDTH_8
-                bool "8-bit"
+    config DESK_CLOCK_NT35510_MIRROR_Y
+        bool "Mirror Y"
+        default n
 
-            config DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
-                bool "16-bit"
-        endchoice
+    config DESK_CLOCK_NT35510_INVERT_COLOR
+        bool "Invert color"
+        default n
 
-        config DESK_CLOCK_NT35510_I80_BUS_WIDTH
-            int
-            default 8 if DESK_CLOCK_NT35510_I80_BUS_WIDTH_8
-            default 16 if DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
+    config DESK_CLOCK_NT35510_SWAP_RGB565_BYTES
+        bool "Swap RGB565 bytes before flush"
+        default y if DESK_CLOCK_NT35510_I80_BUS_WIDTH_8
+        default n if DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
+        help
+            Keep this enabled for panels that expect big-endian RGB565
+            color payloads on the I80 bus. Most 16-bit parallel buses
+            should leave this disabled.
 
-        choice DESK_CLOCK_NT35510_COLOR_ORDER
-            prompt "Panel color order"
-            default DESK_CLOCK_NT35510_COLOR_ORDER_BGR
+    config DESK_CLOCK_NT35510_PIN_WR
+        int "WR pin"
+        range -1 48
+        default -1
 
-            config DESK_CLOCK_NT35510_COLOR_ORDER_RGB
-                bool "RGB"
+    config DESK_CLOCK_NT35510_PIN_CS
+        int "CS pin"
+        range -1 48
+        default -1
 
-            config DESK_CLOCK_NT35510_COLOR_ORDER_BGR
-                bool "BGR"
-        endchoice
+    config DESK_CLOCK_NT35510_PIN_DC
+        int "DC pin"
+        range -1 48
+        default -1
 
-        config DESK_CLOCK_NT35510_SWAP_XY
-            bool "Swap X/Y"
-            default y
+    config DESK_CLOCK_NT35510_PIN_RST
+        int "RST pin"
+        range -1 48
+        default -1
 
-        config DESK_CLOCK_NT35510_MIRROR_X
-            bool "Mirror X"
-            default y
+    config DESK_CLOCK_NT35510_PIN_BK_LIGHT
+        int "Backlight pin"
+        range -1 48
+        default -1
 
-        config DESK_CLOCK_NT35510_MIRROR_Y
-            bool "Mirror Y"
-            default n
+    config DESK_CLOCK_NT35510_PIN_POWER
+        int "Panel power-enable pin"
+        range -1 48
+        default -1
 
-        config DESK_CLOCK_NT35510_INVERT_COLOR
-            bool "Invert color"
-            default n
+    config DESK_CLOCK_NT35510_BK_LIGHT_ACTIVE_HIGH
+        bool "Backlight active high"
+        default y
 
-        config DESK_CLOCK_NT35510_SWAP_RGB565_BYTES
-            bool "Swap RGB565 bytes before flush"
-            default y if DESK_CLOCK_NT35510_I80_BUS_WIDTH_8
-            default n if DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
-            help
-                Keep this enabled for panels that expect big-endian RGB565
-                color payloads on the I80 bus. Most 16-bit parallel buses
-                should leave this disabled.
+    config DESK_CLOCK_NT35510_POWER_ACTIVE_HIGH
+        bool "Panel power-enable active high"
+        default y
 
-        config DESK_CLOCK_NT35510_PIN_WR
-            int "WR pin"
+    config DESK_CLOCK_NT35510_PIN_D0
+        int "D0 pin"
+        range -1 48
+        default -1
+
+    config DESK_CLOCK_NT35510_PIN_D1
+        int "D1 pin"
+        range -1 48
+        default -1
+
+    config DESK_CLOCK_NT35510_PIN_D2
+        int "D2 pin"
+        range -1 48
+        default -1
+
+    config DESK_CLOCK_NT35510_PIN_D3
+        int "D3 pin"
+        range -1 48
+        default -1
+
+    config DESK_CLOCK_NT35510_PIN_D4
+        int "D4 pin"
+        range -1 48
+        default -1
+
+    config DESK_CLOCK_NT35510_PIN_D5
+        int "D5 pin"
+        range -1 48
+        default -1
+
+    config DESK_CLOCK_NT35510_PIN_D6
+        int "D6 pin"
+        range -1 48
+        default -1
+
+    config DESK_CLOCK_NT35510_PIN_D7
+        int "D7 pin"
+        range -1 48
+        default -1
+
+    if DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
+
+        config DESK_CLOCK_NT35510_PIN_D8
+            int "D8 pin"
             range -1 48
             default -1
 
-        config DESK_CLOCK_NT35510_PIN_CS
-            int "CS pin"
+        config DESK_CLOCK_NT35510_PIN_D9
+            int "D9 pin"
             range -1 48
             default -1
 
-        config DESK_CLOCK_NT35510_PIN_DC
-            int "DC pin"
+        config DESK_CLOCK_NT35510_PIN_D10
+            int "D10 pin"
             range -1 48
             default -1
 
-        config DESK_CLOCK_NT35510_PIN_RST
-            int "RST pin"
+        config DESK_CLOCK_NT35510_PIN_D11
+            int "D11 pin"
             range -1 48
             default -1
 
-        config DESK_CLOCK_NT35510_PIN_BK_LIGHT
-            int "Backlight pin"
+        config DESK_CLOCK_NT35510_PIN_D12
+            int "D12 pin"
             range -1 48
             default -1
 
-        config DESK_CLOCK_NT35510_PIN_POWER
-            int "Panel power-enable pin"
+        config DESK_CLOCK_NT35510_PIN_D13
+            int "D13 pin"
             range -1 48
             default -1
 
-        config DESK_CLOCK_NT35510_BK_LIGHT_ACTIVE_HIGH
-            bool "Backlight active high"
-            default y
-
-        config DESK_CLOCK_NT35510_POWER_ACTIVE_HIGH
-            bool "Panel power-enable active high"
-            default y
-
-        config DESK_CLOCK_NT35510_PIN_D0
-            int "D0 pin"
+        config DESK_CLOCK_NT35510_PIN_D14
+            int "D14 pin"
             range -1 48
             default -1
 
-        config DESK_CLOCK_NT35510_PIN_D1
-            int "D1 pin"
+        config DESK_CLOCK_NT35510_PIN_D15
+            int "D15 pin"
             range -1 48
             default -1
-
-        config DESK_CLOCK_NT35510_PIN_D2
-            int "D2 pin"
-            range -1 48
-            default -1
-
-        config DESK_CLOCK_NT35510_PIN_D3
-            int "D3 pin"
-            range -1 48
-            default -1
-
-        config DESK_CLOCK_NT35510_PIN_D4
-            int "D4 pin"
-            range -1 48
-            default -1
-
-        config DESK_CLOCK_NT35510_PIN_D5
-            int "D5 pin"
-            range -1 48
-            default -1
-
-        config DESK_CLOCK_NT35510_PIN_D6
-            int "D6 pin"
-            range -1 48
-            default -1
-
-        config DESK_CLOCK_NT35510_PIN_D7
-            int "D7 pin"
-            range -1 48
-            default -1
-
-        if DESK_CLOCK_NT35510_I80_BUS_WIDTH_16
-
-            config DESK_CLOCK_NT35510_PIN_D8
-                int "D8 pin"
-                range -1 48
-                default -1
-
-            config DESK_CLOCK_NT35510_PIN_D9
-                int "D9 pin"
-                range -1 48
-                default -1
-
-            config DESK_CLOCK_NT35510_PIN_D10
-                int "D10 pin"
-                range -1 48
-                default -1
-
-            config DESK_CLOCK_NT35510_PIN_D11
-                int "D11 pin"
-                range -1 48
-                default -1
-
-            config DESK_CLOCK_NT35510_PIN_D12
-                int "D12 pin"
-                range -1 48
-                default -1
-
-            config DESK_CLOCK_NT35510_PIN_D13
-                int "D13 pin"
-                range -1 48
-                default -1
-
-            config DESK_CLOCK_NT35510_PIN_D14
-                int "D14 pin"
-                range -1 48
-                default -1
-
-            config DESK_CLOCK_NT35510_PIN_D15
-                int "D15 pin"
-                range -1 48
-                default -1
-
-        endif
 
     endif
 

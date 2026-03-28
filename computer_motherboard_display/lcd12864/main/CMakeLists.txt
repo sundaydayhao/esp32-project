@@ -22,5 +22,4 @@ idf_component_register(
         heap
         json
         mbedtls
-        esp_sntp
 )

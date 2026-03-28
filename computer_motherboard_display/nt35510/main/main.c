@@ -6,6 +6,8 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
+#include "audio/audio_output.h"
+#include "audio/hourly_chime.h"
 #include "config.h"
 #include "lcd/lcd_driver.h"
 #include "net/ntp_client.h"
@@ -79,6 +81,20 @@ void app_main(void)
     config_store_get_u8(NVS_KEY_BRIGHTNESS, &brightness, 100);
     lcd_driver_set_brightness(brightness);
 
+    ret = audio_output_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG_MAIN, "Audio init failed: %s", esp_err_to_name(ret));
+    } else {
+        ret = audio_output_play_test_tone();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG_MAIN, "Audio test tone failed: %s", esp_err_to_name(ret));
+        }
+        ret = audio_output_deinit();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG_MAIN, "Audio deinit failed: %s", esp_err_to_name(ret));
+        }
+    }
+
 #if SYSTEM_BOOT_MODE == BOOT_MODE_LCD_DIAGNOSTIC
     ESP_LOGW(TAG_MAIN, "Boot mode: LCD diagnostic");
     if (xTaskCreatePinnedToCore(lcd_diag_task, "lcd_diag",
@@ -124,6 +140,11 @@ void app_main(void)
         weather_task, "weather",
         TASK_STACK_WEATHER, NULL,
         TASK_PRIO_WEATHER, NULL, 0);
+
+    xTaskCreatePinnedToCore(
+        hourly_chime_task, "hourly_chime",
+        TASK_STACK_CHIME, NULL,
+        TASK_PRIO_CHIME, NULL, 0);
 
     start_ui_task_or_halt();
 

@@ -32,18 +32,21 @@ static weather_data_t s_data = { 0 };
 static char *s_http_buf = NULL;
 static int s_http_len = 0;
 
+#if !CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY
 extern const char certs_isrg_root_x1_pem_start[] asm("_binary_isrg_root_x1_pem_start");
 static const char *weather_root_cert_pem(void)
 {
     return certs_isrg_root_x1_pem_start;
 }
+#endif
 
 static void log_tls_heap(const char *stage)
 {
-    ESP_LOGI(TAG_WEATHER, "%s heap=%luKB internal=%luKB",
+    ESP_LOGI(TAG_WEATHER, "%s heap=%luKB internal=%luKB largest_internal=%luKB",
              stage,
              (unsigned long)(esp_get_free_heap_size() / 1024),
-             (unsigned long)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+             (unsigned long)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned long)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
 }
 
 static void log_weather_clock_state(const char *stage)
@@ -352,6 +355,8 @@ static esp_err_t http_get(const char *url, const char *api_key)
         .timeout_ms = WEATHER_HTTP_TIMEOUT_MS,
         .event_handler = http_event_handler,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
+        .buffer_size = 2048,
+        .buffer_size_tx = 1024,
 #if !CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY
         .cert_pem = weather_root_cert_pem(),
 #endif
