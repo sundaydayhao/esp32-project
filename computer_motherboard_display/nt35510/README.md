@@ -45,3 +45,9 @@ idf.py -p COMx flash monitor
 
 The checked-in `sdkconfig.defaults` already includes the example NT35510 I80
 pin mapping. Update the pin assignments there before flashing to real hardware.
+
+
+## 待开发功能
+增加DH11，实际问题和预报问题对比，注意添加衣物
+按键按下两次，播报天气，并注意温差
+
