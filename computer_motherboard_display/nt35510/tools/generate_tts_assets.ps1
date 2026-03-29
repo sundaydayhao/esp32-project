@@ -233,6 +233,7 @@ New-SapiVbs -Path $tempScript
 $assets = [ordered]@{
     "prefix_beijing_time.wav" = ([string][char]0x5317) + ([string][char]0x4EAC) + ([string][char]0x65F6) + ([string][char]0x95F4)
     "suffix_oclock.wav" = [string][char]0x70B9
+    "suffix_exact_hour.wav" = ([string][char]0x70B9) + ([string][char]0x6574)
     "suffix_minute.wav" = [string][char]0x5206
 }
 

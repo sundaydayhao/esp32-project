@@ -130,6 +130,7 @@ typedef struct {
 
 DECLARE_WAV_ASSET(prefix_beijing_time)
 DECLARE_WAV_ASSET(suffix_oclock)
+DECLARE_WAV_ASSET(suffix_exact_hour)
 DECLARE_WAV_ASSET(suffix_minute)
 HOUR_ASSET_LIST(DECLARE_WAV_ASSET)
 MINUTE_ASSET_LIST(DECLARE_WAV_ASSET)
@@ -339,6 +340,7 @@ static esp_err_t audio_output_announce_time_locked(int hour, int minute, bool in
 {
     const wav_asset_t prefix_asset = WAV_ASSET(prefix_beijing_time);
     const wav_asset_t oclock_asset = WAV_ASSET(suffix_oclock);
+    const wav_asset_t exact_hour_asset = WAV_ASSET(suffix_exact_hour);
     const wav_asset_t minute_suffix_asset = WAV_ASSET(suffix_minute);
     const wav_asset_t *hour_asset = get_hour_asset(hour);
     const wav_asset_t *minute_asset = include_minute ? get_minute_asset(minute) : NULL;
@@ -386,7 +388,7 @@ static esp_err_t audio_output_announce_time_locked(int hour, int minute, bool in
         goto cleanup;
     }
 
-    ret = play_wav_asset(&oclock_asset);
+    ret = play_wav_asset(include_minute ? &oclock_asset : &exact_hour_asset);
     if (ret != ESP_OK) {
         goto cleanup;
     }
