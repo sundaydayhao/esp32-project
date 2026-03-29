@@ -1,3 +1,5 @@
+file(GLOB AUDIO_TTS_FILES "audio/tts/*.wav")
+
 idf_component_register(
     SRCS
         "main.c"
@@ -6,10 +8,14 @@ idf_component_register(
         "wifi_manager.c"
         "ntp_client.c"
         "weather_client.c"
+        "audio_output.c"
+        "hourly_chime.c"
+        "dht11.c"
     INCLUDE_DIRS
         "."
     REQUIRES
         driver
+        esp_driver_i2s
         esp_wifi
         esp_http_client
         lwip
@@ -25,4 +31,6 @@ idf_component_register(
         esp_rom
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
+    EMBED_FILES
+        ${AUDIO_TTS_FILES}
 )

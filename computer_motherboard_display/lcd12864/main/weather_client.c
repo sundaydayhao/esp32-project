@@ -1,23 +1,24 @@
 /**
  * @file weather_client.c
- * @brief QWeather current weather client
+ * @brief QWeather daily forecast client
  */
 
 #include "weather_client.h"
-#include "ntp_client.h"
-#include "wifi_manager.h"
+
+#include <stdlib.h>
+#include <string.h>
 
 #include "cJSON.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "miniz.h"
 #include "mbedtls/error.h"
 #include "mbedtls/x509_crt.h"
+#include "miniz.h"
 
-#include <stdlib.h>
-#include <string.h>
+#include "ntp_client.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "weather";
 
@@ -34,15 +35,15 @@ extern const char certs_isrg_root_x1_pem_start[] asm("_binary_isrg_root_x1_pem_s
 #endif
 
 #define WEATHER_API_URL_FMT \
-    "https://nx5khwapkg.re.qweatherapi.com/v7/weather/now?location=%s&key=%s"
+    "https://nx5khwapkg.re.qweatherapi.com/v7/weather/3d?location=%s&key=%s"
 
-#define HTTP_BUF_SIZE         4096
-#define WEATHER_NTP_WAIT_MS   45000
-#define WEATHER_HTTP_TIMEOUT_MS 15000
+#define HTTP_BUF_SIZE            4096
+#define WEATHER_NTP_WAIT_MS      45000
+#define WEATHER_HTTP_TIMEOUT_MS  15000
 
-static weather_data_t s_weather = {0};
-static char *s_http_buf = NULL;
-static int s_http_len = 0;
+static weather_data_t s_weather;
+static char *s_http_buf;
+static int s_http_len;
 
 static const char *weather_root_cert_pem(void)
 {
@@ -158,8 +159,7 @@ static void maybe_decompress_http_body(void)
     size_t out_len = tinfl_decompress_mem_to_mem(decoded, decoded_len,
                                                  src + payload_offset, compressed_len, 0);
     if (out_len == TINFL_DECOMPRESS_MEM_TO_MEM_FAILED) {
-        ESP_LOGE(TAG, "Gzip decompress failed: payload_off=%u compressed=%u decoded=%u",
-                 (unsigned)payload_offset, (unsigned)compressed_len, (unsigned)decoded_len);
+        ESP_LOGE(TAG, "Gzip decompress failed");
         free(decoded);
         return;
     }
@@ -213,60 +213,64 @@ static esp_err_t parse_weather_json(const char *json)
     }
 
     cJSON *code = cJSON_GetObjectItem(root, "code");
-    if (!code || !cJSON_IsString(code) || strcmp(code->valuestring, "200") != 0) {
+    if (!cJSON_IsString(code) || strcmp(code->valuestring, "200") != 0) {
         ESP_LOGE(TAG, "API error code: %s",
                  (code && cJSON_IsString(code)) ? code->valuestring : "unknown");
         cJSON_Delete(root);
         return ESP_FAIL;
     }
 
-    cJSON *now = cJSON_GetObjectItem(root, "now");
-    if (!now || !cJSON_IsObject(now)) {
-        ESP_LOGE(TAG, "No 'now' field in response");
+    cJSON *daily = cJSON_GetObjectItem(root, "daily");
+    if (!cJSON_IsArray(daily) || cJSON_GetArraySize(daily) <= 0) {
+        ESP_LOGE(TAG, "No daily forecast array");
+        cJSON_Delete(root);
+        return ESP_FAIL;
+    }
+
+    cJSON *today = cJSON_GetArrayItem(daily, 0);
+    if (!cJSON_IsObject(today)) {
+        ESP_LOGE(TAG, "Invalid daily forecast entry");
         cJSON_Delete(root);
         return ESP_FAIL;
     }
 
     memset(&s_weather, 0, sizeof(s_weather));
 
-    cJSON *item = cJSON_GetObjectItem(now, "text");
-    if (item && cJSON_IsString(item)) {
+    cJSON *item = cJSON_GetObjectItem(today, "textDay");
+    if (cJSON_IsString(item)) {
         strncpy(s_weather.text, item->valuestring, sizeof(s_weather.text) - 1);
     }
 
-    item = cJSON_GetObjectItem(now, "temp");
-    if (item && cJSON_IsString(item)) {
-        s_weather.temp = (int8_t)atoi(item->valuestring);
+    item = cJSON_GetObjectItem(today, "fxDate");
+    if (cJSON_IsString(item)) {
+        strncpy(s_weather.forecast_date, item->valuestring, sizeof(s_weather.forecast_date) - 1);
     }
 
-    item = cJSON_GetObjectItem(now, "feelsLike");
-    if (item && cJSON_IsString(item)) {
-        s_weather.feels_like = (int8_t)atoi(item->valuestring);
+    item = cJSON_GetObjectItem(today, "tempMin");
+    if (cJSON_IsString(item)) {
+        s_weather.temp_min = (int8_t)atoi(item->valuestring);
     }
 
-    item = cJSON_GetObjectItem(now, "humidity");
-    if (item && cJSON_IsString(item)) {
+    item = cJSON_GetObjectItem(today, "tempMax");
+    if (cJSON_IsString(item)) {
+        s_weather.temp_max = (int8_t)atoi(item->valuestring);
+    }
+
+    item = cJSON_GetObjectItem(today, "humidity");
+    if (cJSON_IsString(item)) {
         s_weather.humidity = (uint8_t)atoi(item->valuestring);
     }
 
-    item = cJSON_GetObjectItem(now, "windSpeed");
-    if (item && cJSON_IsString(item)) {
-        s_weather.wind_speed = (uint16_t)atoi(item->valuestring);
-    }
-
-    item = cJSON_GetObjectItem(now, "windDir");
-    if (item && cJSON_IsString(item)) {
-        strncpy(s_weather.wind_dir, item->valuestring, sizeof(s_weather.wind_dir) - 1);
-    }
-
-    item = cJSON_GetObjectItem(now, "obsTime");
-    if (item && cJSON_IsString(item)) {
-        strncpy(s_weather.update_time, item->valuestring, sizeof(s_weather.update_time) - 1);
+    if (s_weather.forecast_date[0] != '\0') {
+        strncpy(s_weather.update_time, s_weather.forecast_date, sizeof(s_weather.update_time) - 1);
     }
 
     s_weather.valid = true;
-    ESP_LOGI(TAG, "Weather: %s, %dC, humidity=%u%%",
-             s_weather.text, s_weather.temp, (unsigned)s_weather.humidity);
+    ESP_LOGI(TAG, "Forecast: %s, %d-%dC, humidity=%u%%",
+             s_weather.text,
+             (int)s_weather.temp_min,
+             (int)s_weather.temp_max,
+             (unsigned)s_weather.humidity);
 
     cJSON_Delete(root);
     return ESP_OK;
@@ -372,14 +376,12 @@ void weather_task(void *arg)
     vTaskDelay(pdMS_TO_TICKS(1000));
 
     while (1) {
-        ESP_LOGI(TAG, "Fetching weather data...");
+        ESP_LOGI(TAG, "Fetching daily forecast...");
         esp_err_t ret = weather_client_fetch();
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "Weather fetch failed, will retry in 5 min");
             vTaskDelay(pdMS_TO_TICKS(5 * 60 * 1000));
         } else {
-            ESP_LOGI(TAG, "Weather task stack watermark=%u",
-                     (unsigned)uxTaskGetStackHighWaterMark(NULL));
             vTaskDelay(pdMS_TO_TICKS(
                 (uint32_t)CONFIG_WEATHER_UPDATE_INTERVAL_MIN * 60 * 1000));
         }
