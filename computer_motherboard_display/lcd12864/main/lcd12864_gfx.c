@@ -369,6 +369,30 @@ void lcd12864_gfx_char(uint8_t x, uint8_t y, char c, bool on)
     }
 }
 
+void lcd12864_gfx_char_scaled(uint8_t x, uint8_t y, char c, uint8_t scale, bool on)
+{
+    if (scale == 0) {
+        scale = 1;
+    }
+
+    if (c < 32 || c > 126) c = '?';
+    const uint8_t *glyph = s_font5x7[(uint8_t)c - 32];
+
+    for (uint8_t col = 0; col < 5; col++) {
+        uint8_t bits = glyph[col];
+        for (uint8_t row = 0; row < 7; row++) {
+            bool pixel_on = ((bits >> row) & 1U) != 0U;
+            for (uint8_t dx = 0; dx < scale; dx++) {
+                for (uint8_t dy = 0; dy < scale; dy++) {
+                    fb_set_pixel(x + col * scale + dx,
+                                 y + row * scale + dy,
+                                 pixel_on ? on : !on);
+                }
+            }
+        }
+    }
+}
+
 void lcd12864_gfx_str(uint8_t x, uint8_t y, const char *str, bool on)
 {
     if (!str) return;
@@ -376,6 +400,24 @@ void lcd12864_gfx_str(uint8_t x, uint8_t y, const char *str, bool on)
     while (*str && cx + 5 <= 128) {
         lcd12864_gfx_char(cx, y, *str, on);
         cx += 6;
+        str++;
+    }
+}
+
+void lcd12864_gfx_str_scaled(uint8_t x, uint8_t y, const char *str, uint8_t scale, bool on)
+{
+    if (!str) return;
+    if (scale == 0) {
+        scale = 1;
+    }
+
+    uint8_t cx = x;
+    uint8_t glyph_w = 5 * scale;
+    uint8_t advance = 6 * scale;
+
+    while (*str && cx + glyph_w <= 128) {
+        lcd12864_gfx_char_scaled(cx, y, *str, scale, on);
+        cx += advance;
         str++;
     }
 }

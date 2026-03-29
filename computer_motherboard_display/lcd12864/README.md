@@ -1,6 +1,13 @@
-# ESP32 + LCD12864 实时时钟与天气显示
+# ESP32 / ESP32-S3 + LCD12864 实时时钟与天气显示
 
-基于 ESP32 + LCD12864（ST7920 控制器）的实时时钟与天气信息显示项目。
+基于 ESP32 / ESP32-S3 + LCD12864（ST7920 控制器）的实时时钟与天气信息显示项目。
+
+已验证源码层面兼容以下模组：
+
+- `ESP-WROOM-32D`
+- `ESP32-S3-WROOM-1`
+
+说明：这是“同一套源码兼容双目标”，不是“一份固件同时刷两种芯片”。编译前需要先执行对应的 `idf.py set-target`。
 
 ## 功能特性
 
@@ -29,7 +36,7 @@
 
 | 器件 | 说明 |
 |------|------|
-| ESP32 开发板 | 任意 ESP32（推荐 ESP32-DevKitC） |
+| ESP32 开发板 | `ESP-WROOM-32D`、`ESP32-S3-WROOM-1`，或其它可用 GPIO 足够的 ESP32 / ESP32-S3 开发板 |
 | LCD12864 | ST7920 控制器，**5V 8位并行接口** |
 | 杜邦线 | 若干 |
 
@@ -106,8 +113,10 @@ idf.py menuconfig
 # 进入项目目录
 cd computer_motherboard_display/lcd12864
 
-# 设置目标芯片（ESP32）
+# 设置目标芯片（二选一）
 idf.py set-target esp32
+# 或
+idf.py set-target esp32s3
 
 # 配置参数
 idf.py menuconfig

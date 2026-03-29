@@ -15,10 +15,10 @@ static const char *TAG = "wifi_mgr";
 
 /* Kconfig 中配置的 SSID 和密码 */
 #ifndef CONFIG_WIFI_SSID
-#define CONFIG_WIFI_SSID        "your_ssid"
+#define CONFIG_WIFI_SSID        "haoge"
 #endif
 #ifndef CONFIG_WIFI_PASSWORD
-#define CONFIG_WIFI_PASSWORD    "your_password"
+#define CONFIG_WIFI_PASSWORD    "19901118"
 #endif
 #define WIFI_MAX_RETRY          10
 

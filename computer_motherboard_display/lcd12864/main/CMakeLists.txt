@@ -22,4 +22,7 @@ idf_component_register(
         heap
         json
         mbedtls
+        esp_rom
+    EMBED_TXTFILES
+        "certs/isrg_root_x1.pem"
 )

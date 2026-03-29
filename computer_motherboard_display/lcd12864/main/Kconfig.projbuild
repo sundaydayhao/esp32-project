@@ -3,13 +3,13 @@ menu "LCD12864 Clock Configuration"
     menu "WiFi Settings"
         config WIFI_SSID
             string "WiFi SSID"
-            default "your_ssid"
+            default "haoge"
             help
                 WiFi 网络名称（SSID）
 
         config WIFI_PASSWORD
             string "WiFi Password"
-            default "your_password"
+            default "19901118"
             help
                 WiFi 密码
     endmenu
@@ -90,14 +90,14 @@ menu "LCD12864 Clock Configuration"
     menu "Weather API Settings"
         config WEATHER_API_KEY
             string "QWeather API Key"
-            default "your_qweather_api_key"
+            default "04c81d5d4f3346a48d69b886c6c98cb0"
             help
                 和风天气 API Key，在 https://dev.qweather.com 注册后获取。
                 免费版每天 1000 次请求。
 
         config WEATHER_LOCATION_ID
             string "Location ID"
-            default "101010100"
+            default "101280601"
             help
                 城市 Location ID，可在和风天气城市列表中查询。
                 常用城市：

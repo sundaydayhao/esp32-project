@@ -98,6 +98,16 @@ void lcd12864_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on)
 void lcd12864_gfx_char(uint8_t x, uint8_t y, char c, bool on);
 
 /**
+ * @brief Draw one ASCII character with integer scaling
+ * @param x      Top-left x
+ * @param y      Top-left y
+ * @param c      ASCII character, 32~126
+ * @param scale  Pixel scale factor, >= 1
+ * @param on     true=lit, false=dark
+ */
+void lcd12864_gfx_char_scaled(uint8_t x, uint8_t y, char c, uint8_t scale, bool on);
+
+/**
  * @brief 绘制 ASCII 字符串
  * @param x    起始列坐标
  * @param y    起始行坐标
@@ -105,6 +115,16 @@ void lcd12864_gfx_char(uint8_t x, uint8_t y, char c, bool on);
  * @param on   true=亮色，false=暗色
  */
 void lcd12864_gfx_str(uint8_t x, uint8_t y, const char *str, bool on);
+
+/**
+ * @brief Draw ASCII string with integer scaling
+ * @param x      Start x
+ * @param y      Start y
+ * @param str    ASCII string
+ * @param scale  Pixel scale factor, >= 1
+ * @param on     true=lit, false=dark
+ */
+void lcd12864_gfx_str_scaled(uint8_t x, uint8_t y, const char *str, uint8_t scale, bool on);
 
 /* ----------------------------------------------------------------
  * 天气图标

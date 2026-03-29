@@ -69,6 +69,44 @@ static uint8_t s_gram[1024];
 /* 当前模式 */
 static bool s_graphic_mode = false;
 
+static esp_err_t validate_output_gpio(int gpio_num, const char *name)
+{
+    if (!GPIO_IS_VALID_OUTPUT_GPIO(gpio_num)) {
+        ESP_LOGE(TAG, "%s uses invalid output GPIO: %d", name, gpio_num);
+        return ESP_ERR_INVALID_ARG;
+    }
+    return ESP_OK;
+}
+
+static esp_err_t validate_pin_config(void)
+{
+    static const int pins[] = {
+        LCD_PIN_D0, LCD_PIN_D1, LCD_PIN_D2, LCD_PIN_D3,
+        LCD_PIN_D4, LCD_PIN_D5, LCD_PIN_D6, LCD_PIN_D7,
+        LCD_PIN_RS, LCD_PIN_E, LCD_PIN_RST,
+    };
+    static const char *names[] = {
+        "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7",
+        "RS", "E", "RST",
+    };
+
+    for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); ++i) {
+        esp_err_t ret = validate_output_gpio(pins[i], names[i]);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+        for (size_t j = i + 1; j < sizeof(pins) / sizeof(pins[0]); ++j) {
+            if (pins[i] == pins[j]) {
+                ESP_LOGE(TAG, "GPIO %d is assigned to both %s and %s",
+                         pins[i], names[i], names[j]);
+                return ESP_ERR_INVALID_ARG;
+            }
+        }
+    }
+
+    return ESP_OK;
+}
+
 /* ----------------------------------------------------------------
  * 底层并行写操作
  * ---------------------------------------------------------------- */
@@ -117,6 +155,11 @@ static void lcd_write_data(uint8_t data)
 
 esp_err_t lcd12864_init(void)
 {
+    esp_err_t ret = validate_pin_config();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
     ESP_LOGI(TAG, "Initializing LCD12864 (ST7920, 8-bit parallel)");
     ESP_LOGI(TAG, "Pins: D0-D7=[%d,%d,%d,%d,%d,%d,%d,%d] RS=%d E=%d RST=%d",
              LCD_PIN_D0, LCD_PIN_D1, LCD_PIN_D2, LCD_PIN_D3,
@@ -139,7 +182,11 @@ esp_err_t lcd12864_init(void)
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
-    gpio_config(&io_conf);
+    ret = gpio_config(&io_conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "gpio_config failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     /* 初始状态：E 低，RS 低，数据总线清零 */
     E_LOW();
