@@ -187,6 +187,9 @@ app_main
 - ESP-IDF v5.x
 - 组件：`esp_wifi`, `esp_http_client`, `esp_sntp`, `nvs_flash`, `json`（cJSON，ESP-IDF 内置）
 
+## 后续功能
+添加整点报时
+
 ## License
 
 MIT
