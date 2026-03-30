@@ -1,11 +1,13 @@
 idf_component_register(
     SRCS
         "main.c"
-        "lcd12864.c"
-        "lcd12864_gfx.c"
+        "lcd1602.c"
         "wifi_manager.c"
         "ntp_client.c"
         "weather_client.c"
+        "dht11.c"
+        "audio_output.c"
+        "hourly_chime.c"
     INCLUDE_DIRS
         "."
     REQUIRES

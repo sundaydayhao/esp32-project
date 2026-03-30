@@ -1,5 +1,5 @@
 # ============================================================
-# LCD12864 clock SDK defaults
+# LCD1602 clock SDK defaults
 # Source-compatible with both `esp32` and `esp32s3`.
 # Select the actual chip before build:
 #   idf.py set-target esp32

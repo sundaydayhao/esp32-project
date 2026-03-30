@@ -1,9 +1,9 @@
 /**
- * @file lcd12864_gfx.c
- * @brief LCD12864 图形层实现：5x7 字体 + 天气 Emoji 图标（16x16 单色位图）
+ * @file lcd1602_gfx.c
+ * @brief LCD1602 图形层实现：5x7 字体 + 天气 Emoji 图标（16x16 单色位图）
  */
-#include "lcd12864_gfx.h"
-#include "lcd12864.h"
+#include "lcd1602_gfx.h"
+#include "lcd1602.h"
 #include <string.h>
 
 /* ================================================================
@@ -307,36 +307,36 @@ static inline void fb_set_pixel(uint8_t x, uint8_t y, bool on)
  * 公共 API
  * ================================================================ */
 
-void lcd12864_gfx_init(void)
+void lcd1602_gfx_init(void)
 {
     memset(s_fb, 0, sizeof(s_fb));
-    lcd12864_enter_graphic_mode();
-    lcd12864_flush_bitmap(s_fb);
+    lcd1602_enter_graphic_mode();
+    lcd1602_flush_bitmap(s_fb);
 }
 
-void lcd12864_gfx_clear(void)
+void lcd1602_gfx_clear(void)
 {
     memset(s_fb, 0, sizeof(s_fb));
 }
 
-void lcd12864_gfx_flush(void)
+void lcd1602_gfx_flush(void)
 {
-    lcd12864_flush_bitmap(s_fb);
+    lcd1602_flush_bitmap(s_fb);
 }
 
-void lcd12864_gfx_pixel(uint8_t x, uint8_t y, bool on)
+void lcd1602_gfx_pixel(uint8_t x, uint8_t y, bool on)
 {
     fb_set_pixel(x, y, on);
 }
 
-void lcd12864_gfx_hline(uint8_t x, uint8_t y, uint8_t w, bool on)
+void lcd1602_gfx_hline(uint8_t x, uint8_t y, uint8_t w, bool on)
 {
     for (uint8_t i = 0; i < w; i++) {
         fb_set_pixel(x + i, y, on);
     }
 }
 
-void lcd12864_gfx_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on)
+void lcd1602_gfx_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on)
 {
     for (uint8_t i = 0; i < w; i++) {
         fb_set_pixel(x + i, y,         on);
@@ -348,7 +348,7 @@ void lcd12864_gfx_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on)
     }
 }
 
-void lcd12864_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on)
+void lcd1602_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on)
 {
     for (uint8_t j = 0; j < h; j++) {
         for (uint8_t i = 0; i < w; i++) {
@@ -357,7 +357,7 @@ void lcd12864_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on)
     }
 }
 
-void lcd12864_gfx_char(uint8_t x, uint8_t y, char c, bool on)
+void lcd1602_gfx_char(uint8_t x, uint8_t y, char c, bool on)
 {
     if (c < 32 || c > 126) c = '?';
     const uint8_t *glyph = s_font5x7[(uint8_t)c - 32];
@@ -369,7 +369,7 @@ void lcd12864_gfx_char(uint8_t x, uint8_t y, char c, bool on)
     }
 }
 
-void lcd12864_gfx_char_scaled(uint8_t x, uint8_t y, char c, uint8_t scale, bool on)
+void lcd1602_gfx_char_scaled(uint8_t x, uint8_t y, char c, uint8_t scale, bool on)
 {
     if (scale == 0) {
         scale = 1;
@@ -393,18 +393,18 @@ void lcd12864_gfx_char_scaled(uint8_t x, uint8_t y, char c, uint8_t scale, bool 
     }
 }
 
-void lcd12864_gfx_str(uint8_t x, uint8_t y, const char *str, bool on)
+void lcd1602_gfx_str(uint8_t x, uint8_t y, const char *str, bool on)
 {
     if (!str) return;
     uint8_t cx = x;
     while (*str && cx + 5 <= 128) {
-        lcd12864_gfx_char(cx, y, *str, on);
+        lcd1602_gfx_char(cx, y, *str, on);
         cx += 6;
         str++;
     }
 }
 
-void lcd12864_gfx_str_scaled(uint8_t x, uint8_t y, const char *str, uint8_t scale, bool on)
+void lcd1602_gfx_str_scaled(uint8_t x, uint8_t y, const char *str, uint8_t scale, bool on)
 {
     if (!str) return;
     if (scale == 0) {
@@ -416,13 +416,13 @@ void lcd12864_gfx_str_scaled(uint8_t x, uint8_t y, const char *str, uint8_t scal
     uint8_t advance = 6 * scale;
 
     while (*str && cx + glyph_w <= 128) {
-        lcd12864_gfx_char_scaled(cx, y, *str, scale, on);
+        lcd1602_gfx_char_scaled(cx, y, *str, scale, on);
         cx += advance;
         str++;
     }
 }
 
-void lcd12864_gfx_weather_icon(uint8_t x, uint8_t y, weather_icon_t icon)
+void lcd1602_gfx_weather_icon(uint8_t x, uint8_t y, weather_icon_t icon)
 {
     if (icon >= WEATHER_ICON_COUNT) icon = WEATHER_ICON_UNKNOWN;
     const uint8_t *bmp = s_icons[icon];
@@ -436,7 +436,7 @@ void lcd12864_gfx_weather_icon(uint8_t x, uint8_t y, weather_icon_t icon)
     }
 }
 
-weather_icon_t lcd12864_gfx_text_to_icon(const char *text)
+weather_icon_t lcd1602_gfx_text_to_icon(const char *text)
 {
     if (!text) return WEATHER_ICON_UNKNOWN;
 
