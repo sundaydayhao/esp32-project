@@ -125,4 +125,62 @@ menu "LCD1602 Clock Configuration"
                 NTP 时间重新同步间隔（分钟）。
     endmenu
 
+    menu "Audio Announcement Settings"
+        config AUDIO_I2S_BCLK_PIN
+            int "Audio I2S BCLK GPIO"
+            default 25
+            help
+                MAX98357A BCLK pin.
+
+        config AUDIO_I2S_WS_PIN
+            int "Audio I2S WS/LRCK GPIO"
+            default 26
+            help
+                MAX98357A LRCK pin.
+
+        config AUDIO_I2S_DOUT_PIN
+            int "Audio I2S DOUT GPIO"
+            default 27
+            help
+                MAX98357A DIN pin connected to ESP32 I2S data out.
+
+        config AUDIO_ANNOUNCE_START_HOUR
+            int "Hourly announce start hour"
+            default 8
+            range 0 23
+            help
+                Earliest hour for hourly voice announcement.
+
+        config AUDIO_ANNOUNCE_END_HOUR
+            int "Hourly announce end hour"
+            default 20
+            range 0 23
+            help
+                Latest hour for hourly voice announcement.
+    endmenu
+
+    menu "Indoor Sensor Settings"
+        config DHT11_GPIO
+            int "DHT11 data GPIO"
+            default 23
+            help
+                DHT11 single-wire data pin. Use an external pull-up resistor.
+
+        config DHT11_UPDATE_INTERVAL_SEC
+            int "DHT11 update interval (seconds)"
+            default 10
+            range 2 3600
+            help
+                Interval between indoor temperature/humidity refreshes.
+    endmenu
+
+    menu "Display Settings"
+        config DISPLAY_SCREEN_SWITCH_SEC
+            int "Screen switch interval (seconds)"
+            default 5
+            range 2 60
+            help
+                Interval for alternating the two text screens.
+    endmenu
+
 endmenu
