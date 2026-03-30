@@ -1,194 +1,306 @@
-# ESP32 / ESP32-S3 + LCD12864 实时时钟与天气显示
+# ESP32 / ESP32-S3 + LCD12864 时钟、天气、室内传感器与整点报时
 
-基于 ESP32 / ESP32-S3 + LCD12864（ST7920 控制器）的实时时钟与天气信息显示项目。
+基于 `ESP32` / `ESP32-S3`、`LCD12864(ST7920 8 位并口)`、`DHT11` 和 `MAX98357A` 的信息显示项目。设备联网后会同步北京时间，拉取和风天气今日预报，在 LCD12864 上轮播显示室外与室内信息，并可进行开机报时与整点语音报时。
 
-已验证源码层面兼容以下模组：
+当前源码已验证可用于以下模组：
 
 - `ESP-WROOM-32D`
 - `ESP32-S3-WROOM-1`
 
-说明：这是“同一套源码兼容双目标”，不是“一份固件同时刷两种芯片”。编译前需要先执行对应的 `idf.py set-target`。
+说明：本项目是同一套源码兼容两个目标芯片，编译前仍需先执行对应的 `idf.py set-target`。
 
-## 功能特性
+## 功能清单
 
-- **实时时钟**：通过 NTP 自动同步北京时间（CST+8），每秒刷新
-- **日期显示**：年月日 + 星期
-- **实时天气**：调用和风天气 API，显示天气状况、温度、湿度、风速
-- **自动重连**：WiFi 断线自动重连，天气/NTP 定时更新
-- **8位并行驱动**：直接操作 GPIO 数据总线，兼容 5V LCD12864 模块
+- NTP 自动同步北京时间，屏幕按秒刷新时间与日期
+- Wi-Fi STA 自动连接，断线后自动重连
+- 通过和风天气 API 获取今日天气预报
+- 显示今日天气文本、最低/最高温、室外湿度
+- 通过 `DHT11` 采集室内温度和湿度
+- 轮播两组页面：
+  - 页面 1：时间、日期、室外天气、室内温湿度
+  - 页面 2：室内外温湿度对比结果
+- 通过 `MAX98357A` + 喇叭播放开机时间播报
+- 在可配置时段内执行整点语音报时
+- 所有 GPIO、Wi-Fi、天气、NTP、音频、DHT11、页面轮播周期都可在 `menuconfig` 中修改
 
-## 显示布局
+## 屏幕显示说明
 
+LCD12864 每隔 `Display screen switch interval` 秒切换一次页面，默认 5 秒。
+
+### 页面 1
+
+```text
+12:34:56 SUNNY
+2026-03-30 MON
+OUT 24-30C 68%
+IN  26C 61%
 ```
-┌────────────────────────────────┐
-│  行0:    12:34:56              │  实时时间（NTP同步）
-│  行1:  2026-03-26 Thu          │  日期 + 星期
-│  行2:  晴        25°C          │  天气状况 + 温度
-│  行3:  Hum: 60%  W: 10km       │  湿度 + 风速
-└────────────────────────────────┘
+
+- 第 1 行：当前时间 + 天气文本
+- 第 2 行：日期 + 星期
+- 第 3 行：室外今日最低/最高温 + 湿度
+- 第 4 行：室内温度 + 湿度
+
+### 页面 2
+
+```text
+12:34:56 SUNNY
+2026-03-30 MON
+TEMP IN RANGE
+HUM +8% WET
 ```
 
-> ST7920 内置 GB2312 字库，天气状况中文（如"晴"、"多云"）可直接显示。
+- 第 3 行：室内温度与室外今日温度范围比较
+- 第 4 行：室内湿度与室外湿度比较
+
+天气中文会被映射成 LCD 上更稳定的英文简写，例如 `SUNNY`、`RAIN`、`CLOUDY`。
 
 ## 硬件连接
 
-### 所需硬件
+### 必要硬件
 
 | 器件 | 说明 |
 |------|------|
-| ESP32 开发板 | `ESP-WROOM-32D`、`ESP32-S3-WROOM-1`，或其它可用 GPIO 足够的 ESP32 / ESP32-S3 开发板 |
-| LCD12864 | ST7920 控制器，**5V 8位并行接口** |
-| 杜邦线 | 若干 |
+| ESP32 / ESP32-S3 开发板 | 需有足够 GPIO |
+| LCD12864 | `ST7920` 控制器，8 位并口模式 |
+| DHT11 | 室内温湿度传感器 |
+| MAX98357A | I2S 功放模块 |
+| 4Ω/8Ω 喇叭 | 用于语音播报 |
+| 连接线 | 若干 |
 
-### 引脚连接（默认）
+### LCD12864 默认引脚
 
 | ESP32 GPIO | LCD12864 引脚 | 说明 |
-|-----------|--------------|------|
-| GPIO 12   | D0           | 数据总线 bit0 |
-| GPIO 13   | D1           | 数据总线 bit1 |
-| GPIO 14   | D2           | 数据总线 bit2 |
-| GPIO 15   | D3           | 数据总线 bit3 |
-| GPIO 16   | D4           | 数据总线 bit4 |
-| GPIO 17   | D5           | 数据总线 bit5 |
-| GPIO 18   | D6           | 数据总线 bit6 |
-| GPIO 19   | D7           | 数据总线 bit7 |
-| GPIO 21   | RS           | 寄存器选择（0=命令，1=数据） |
-| GPIO 22   | E            | 使能（下降沿锁存） |
-| GPIO 4    | RST          | 复位（低电平有效） |
-| **GND**   | **RW**       | **必须接GND**（始终写模式） |
-| **5V**    | **PSB**      | **必须接5V/VCC**（选择并行模式） |
-| 5V        | VCC          | 电源 |
-| GND       | GND          | 地 |
+|-----------|---------------|------|
+| GPIO 12 | D0 | 数据 bit0 |
+| GPIO 13 | D1 | 数据 bit1 |
+| GPIO 14 | D2 | 数据 bit2 |
+| GPIO 15 | D3 | 数据 bit3 |
+| GPIO 16 | D4 | 数据 bit4 |
+| GPIO 17 | D5 | 数据 bit5 |
+| GPIO 18 | D6 | 数据 bit6 |
+| GPIO 19 | D7 | 数据 bit7 |
+| GPIO 21 | RS | 指令/数据选择 |
+| GPIO 22 | E | 使能 |
+| GPIO 4  | RST | 复位 |
+| GND | RW | 必须接地，固定为写模式 |
+| 5V  | PSB | 必须拉高，选择并口模式 |
+| 5V  | VCC | 供电 |
+| GND | GND | 地 |
 
-> ⚠️ **重要注意事项：**
-> 1. **RW 引脚必须接 GND**：始终保持写模式，防止 LCD12864 输出 5V 信号反向损坏 ESP32
-> 2. **PSB 引脚必须接 VCC（5V）**：选择 8 位并行模式（PSB=0 为串行模式）
-> 3. **电平兼容**：ESP32 输出 3.3V，LCD12864 的 5V TTL 输入阈值约 2.0V，可直接连接无需电平转换
+### DHT11 默认引脚
 
-引脚可通过 `idf.py menuconfig` → `LCD12864 Clock Configuration` → `LCD12864 Pin Configuration (8-bit Parallel)` 修改。
+| ESP32 GPIO | DHT11 引脚 | 说明 |
+|-----------|------------|------|
+| GPIO 23 | DATA | 单总线数据 |
+| 3.3V / 5V | VCC | 供电 |
+| GND | GND | 地 |
 
-## 软件配置
+说明：`DATA` 建议外接上拉电阻。
 
-### 1. 配置 WiFi 和天气 API
+### MAX98357A 默认引脚
+
+| ESP32 GPIO | MAX98357A 引脚 | 说明 |
+|-----------|----------------|------|
+| GPIO 25 | BCLK | I2S Bit Clock |
+| GPIO 26 | LRC / WS | I2S Word Select |
+| GPIO 27 | DIN | I2S 数据输出 |
+| 5V / VIN | VIN | 供电 |
+| GND | GND | 地 |
+
+喇叭接到 `MAX98357A` 的扬声器输出端。
+
+### 接线注意事项
+
+1. `LCD12864` 的 `RW` 必须接 `GND`，避免 LCD 反向输出 5V 到 ESP32。
+2. `LCD12864` 的 `PSB` 必须接高电平，项目只支持 8 位并口模式。
+3. `LCD12864` 模块通常使用 5V 供电，接线前先确认你的模块电源规格。
+4. 如果更改了引脚，请同步在 `menuconfig` 中修改。
+
+## 配置说明
+
+运行：
 
 ```bash
 idf.py menuconfig
 ```
 
-进入 `LCD12864 Clock Configuration`：
+进入 `LCD12864 Clock Configuration` 后，至少检查以下几组参数。
 
-| 配置项 | 说明 |
-|--------|------|
-| WiFi SSID | 你的 WiFi 名称 |
-| WiFi Password | 你的 WiFi 密码 |
-| QWeather API Key | 和风天气 API Key（见下方说明） |
-| Location ID | 城市代码（默认 101010100 北京） |
-| Weather update interval | 天气更新间隔（分钟，默认30） |
-| NTP re-sync interval | NTP 重同步间隔（分钟，默认60） |
+### Wi-Fi
 
-### 2. 获取和风天气 API Key
+- `WiFi SSID`
+- `WiFi Password`
 
-1. 访问 [https://dev.qweather.com](https://dev.qweather.com) 注册账号
-2. 创建应用，选择**免费订阅**（每天 1000 次请求）
-3. 复制 API Key 填入 menuconfig
+### Weather API
 
-### 3. 常用城市 Location ID
+- `QWeather API Key`
+- `Location ID`
+- `Weather update interval (minutes)`
+
+项目当前使用和风天气 `3d` 接口中的第 1 天数据作为“今日天气”显示。
+
+### NTP
+
+- `NTP re-sync interval (minutes)`
+
+默认使用以下 NTP 服务器：
+
+- `ntp.aliyun.com`
+- `cn.pool.ntp.org`
+- `pool.ntp.org`
+
+### Audio Announcement
+
+- `Audio I2S BCLK GPIO`
+- `Audio I2S WS/LRCK GPIO`
+- `Audio I2S DOUT GPIO`
+- `Hourly announce start hour`
+- `Hourly announce end hour`
+
+默认只在设定时段内执行整点报时，避免夜间播报。
+
+### Indoor Sensor
+
+- `DHT11 data GPIO`
+- `DHT11 update interval (seconds)`
+
+### Display
+
+- `Screen switch interval (seconds)`
+
+## 获取和风天气配置
+
+1. 访问 [https://dev.qweather.com](https://dev.qweather.com) 注册账号。
+2. 创建应用并获取 `API Key`。
+3. 在 `menuconfig` 中填入 `QWeather API Key`。
+4. 根据城市设置 `Location ID`。
+
+常用城市示例：
 
 | 城市 | Location ID |
-|------|------------|
+|------|-------------|
 | 北京 | 101010100 |
 | 上海 | 101020100 |
 | 广州 | 101280101 |
 | 深圳 | 101280601 |
 | 杭州 | 101210101 |
 | 成都 | 101270101 |
-| 武汉 | 101200101 |
-| 西安 | 101110101 |
 
-更多城市 ID 查询：[https://github.com/qwd/LocationList](https://github.com/qwd/LocationList)
+更多城市可参考 [qwd/LocationList](https://github.com/qwd/LocationList)。
 
 ## 编译与烧录
 
 ```bash
-# 进入项目目录
-cd computer_motherboard_display/lcd12864
+cd lcd12864
 
-# 设置目标芯片（二选一）
+# 二选一
 idf.py set-target esp32
 # 或
 idf.py set-target esp32s3
 
-# 配置参数
 idf.py menuconfig
-
-# 编译
 idf.py build
-
-# 烧录并监视串口
 idf.py -p COM3 flash monitor
 ```
 
-> Windows 下将 `COM3` 替换为实际串口号；Linux/macOS 使用 `/dev/ttyUSB0` 等。
+Windows 下把 `COM3` 改成实际串口；Linux/macOS 可使用 `/dev/ttyUSB0`、`/dev/ttyACM0` 等。
+
+## 操作说明
+
+### 首次使用
+
+1. 按上面的接线表连接 `LCD12864`、`DHT11`、`MAX98357A` 和喇叭。
+2. 使用 `idf.py menuconfig` 填入 Wi-Fi、天气 API 和城市 ID。
+3. 编译并烧录固件。
+4. 打开串口监视器观察启动日志，确认 LCD、Wi-Fi、NTP、天气、DHT11、音频初始化是否成功。
+
+### 上电后的工作流程
+
+1. 屏幕先显示启动信息。
+2. 设备连接 Wi-Fi。
+3. NTP 同步北京时间。
+4. 首次拉取天气数据。
+5. DHT11 开始周期采样室内温湿度。
+6. 若音频初始化成功，NTP 首次同步后会播报当前北京时间。
+7. 显示任务开始按设定周期轮播两页内容。
+
+### 日常使用行为
+
+- 时间每秒刷新一次。
+- 天气按 `Weather update interval` 周期更新。
+- DHT11 按 `DHT11 update interval` 周期更新。
+- 到整点且处于允许时段内时，播放语音报时。
+- Wi-Fi 断开后会自动尝试重连；重连成功后天气和 NTP 会继续更新。
+
+### 日志中可关注的关键信息
+
+- `WiFi connected`
+- `NTP time synchronized`
+- `Forecast: ...`
+- `Indoor: ...`
+- `I2S ready: ...`
 
 ## 项目结构
 
-```
+```text
 lcd12864/
-├── CMakeLists.txt          # 顶层构建文件
-├── sdkconfig.defaults      # SDK 默认配置
-├── README.md               # 本文档
-└── main/
-    ├── CMakeLists.txt      # 组件构建文件
-    ├── Kconfig.projbuild   # menuconfig 配置项
-    ├── main.c              # 主程序入口，任务创建与显示逻辑
-    ├── lcd12864.h/.c       # ST7920 8位并行驱动
-    ├── wifi_manager.h/.c   # WiFi STA 连接管理
-    ├── ntp_client.h/.c     # NTP 时间同步（SNTP）
-    └── weather_client.h/.c # 和风天气 HTTP API 客户端
-```
-
-## 任务架构
-
-```
-app_main
-  ├── 初始化 NVS / LCD / WiFi / NTP / 天气客户端
-  └── 创建三个 FreeRTOS 任务：
-       ├── ntp_task     (Core 0, Prio 3) — 每60分钟重新同步时间
-       ├── weather_task (Core 0, Prio 2) — 每30分钟更新天气
-       └── display_task (Core 1, Prio 4) — 每秒刷新屏幕
+|-- CMakeLists.txt
+|-- README.md
+|-- sdkconfig.defaults
+`-- main/
+    |-- main.c
+    |-- lcd12864.c
+    |-- lcd12864_gfx.c
+    |-- wifi_manager.c
+    |-- ntp_client.c
+    |-- weather_client.c
+    |-- dht11.c
+    |-- audio_output.c
+    |-- hourly_chime.c
+    |-- certs/isrg_root_x1.pem
+    `-- audio/tts/*.wav
 ```
 
 ## 常见问题
 
-**Q: 屏幕无显示？**
-- 检查 **PSB 引脚是否接 VCC（5V）**（并行模式）
-- 检查 **RW 引脚是否接 GND**
-- 检查 VCC 是否为 5V（LCD12864 通常需要 5V）
-- 检查 D0~D7、RS、E 引脚连接是否正确
-- 查看串口日志确认 `LCD12864 initialized OK`
+### LCD 无显示
 
-**Q: 时间不准确？**
-- 确认 WiFi 已连接
-- 确认 NTP 服务器可访问（`ntp.aliyun.com`）
-- 查看日志中 `NTP time synchronized` 是否出现
+- 检查 `PSB` 是否接高电平
+- 检查 `RW` 是否接地
+- 检查模块供电是否正确
+- 检查 `D0~D7`、`RS`、`E`、`RST` 接线
+- 检查 `menuconfig` 中 GPIO 是否和实际接线一致
 
-**Q: 天气显示 "No weather"？**
-- 确认 API Key 正确
-- 确认 Location ID 正确
-- 检查网络连接
-- 查看日志中的 HTTP 状态码
+### 时间不更新
 
-**Q: 中文天气状况乱码？**
-- 和风天气 API 返回 UTF-8 编码，而 ST7920 使用 GB2312
-- 当前版本直接写入 API 返回的字节，如出现乱码需在 `weather_client.c` 中添加 UTF-8 → GB2312 转换
+- 检查 Wi-Fi 是否成功联网
+- 检查日志中是否出现 `NTP time synchronized`
+- 检查网络环境是否允许访问 NTP 服务器
+
+### 没有天气数据
+
+- 检查 `API Key` 和 `Location ID`
+- 检查设备是否联网
+- 检查日志中的 HTTP 状态码和错误信息
+- 注意首次天气请求会等待 NTP 完成后再执行 HTTPS 请求
+
+### 没有语音
+
+- 检查 `MAX98357A` 供电与 `BCLK/WS/DIN` 接线
+- 检查喇叭是否接到功放输出端
+- 检查整点是否落在 `Hourly announce start hour` 到 `Hourly announce end hour` 范围内
+- 检查日志中是否出现 `I2S ready`
 
 ## 依赖
 
-- ESP-IDF v5.x
-- 组件：`esp_wifi`, `esp_http_client`, `esp_sntp`, `nvs_flash`, `json`（cJSON，ESP-IDF 内置）
-
-## 后续功能
-添加整点报时
+- `ESP-IDF v5.x`
+- `esp_wifi`
+- `esp_http_client`
+- `esp_sntp`
+- `nvs_flash`
+- `cJSON`
+- `esp_driver_i2s`
 
 ## License
 
