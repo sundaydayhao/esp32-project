@@ -126,37 +126,39 @@ menu "LCD1602 Clock Configuration"
     endmenu
 
     menu "Audio Announcement Settings"
-        config AUDIO_I2S_BCLK_PIN
-            int "Audio I2S BCLK GPIO"
+        config AUDIO_BUZZER_GPIO
+            int "Buzzer GPIO"
             default 25
             help
-                MAX98357A BCLK pin.
+                蜂鸣器/有源提示音 GPIO 输出引脚。
 
-        config AUDIO_I2S_WS_PIN
-            int "Audio I2S WS/LRCK GPIO"
-            default 26
+        config AUDIO_BEEP_SHORT_MS
+            int "Short beep duration (ms)"
+            default 80
+            range 20 500
             help
-                MAX98357A LRCK pin.
+                短提示音持续时间。
 
-        config AUDIO_I2S_DOUT_PIN
-            int "Audio I2S DOUT GPIO"
-            default 27
+        config AUDIO_BEEP_LONG_MS
+            int "Long beep duration (ms)"
+            default 300
+            range 50 1000
             help
-                MAX98357A DIN pin connected to ESP32 I2S data out.
+                长提示音持续时间。
 
         config AUDIO_ANNOUNCE_START_HOUR
             int "Hourly announce start hour"
             default 8
             range 0 23
             help
-                Earliest hour for hourly voice announcement.
+                Earliest hour for hourly announcement.
 
         config AUDIO_ANNOUNCE_END_HOUR
             int "Hourly announce end hour"
             default 20
             range 0 23
             help
-                Latest hour for hourly voice announcement.
+                Latest hour for hourly announcement.
     endmenu
 
     menu "Indoor Sensor Settings"
