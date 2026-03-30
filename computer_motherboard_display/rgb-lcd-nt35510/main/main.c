@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -9,6 +10,7 @@
 #include "audio/audio_output.h"
 #include "audio/hourly_chime.h"
 #include "config.h"
+#include "history/env_history.h"
 #include "input/button_time_announce.h"
 #include "lcd/lcd_driver.h"
 #include "net/ntp_client.h"
@@ -17,6 +19,7 @@
 #include "sensor/dht11_sensor.h"
 #include "storage/config_store.h"
 #include "ui/ui_renderer.h"
+#include "web/web_dashboard.h"
 
 #if SYSTEM_BOOT_MODE == BOOT_MODE_LCD_DIAGNOSTIC
 static void lcd_diag_task(void *arg)
@@ -44,8 +47,18 @@ static void halt_on_error(const char *subsystem, esp_err_t err)
     }
 }
 
+static void log_heap_status(const char *stage)
+{
+    ESP_LOGI(TAG_MAIN, "%s: heap=%lu KB internal=%lu KB largest_internal=%lu KB",
+             stage,
+             (unsigned long)(esp_get_free_heap_size() / 1024),
+             (unsigned long)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned long)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
+}
+
 static void start_ui_task_or_halt(void)
 {
+    log_heap_status("Before UI task create");
     if (xTaskCreatePinnedToCore(
             ui_renderer_task, "ui",
             TASK_STACK_UI, NULL,
@@ -133,11 +146,14 @@ void app_main(void)
 
     ESP_ERROR_CHECK(weather_client_init());
     ESP_ERROR_CHECK(dht11_sensor_init());
+    ESP_ERROR_CHECK(env_history_init());
+    ESP_ERROR_CHECK(web_dashboard_init());
 
     ret = ui_renderer_init();
     if (ret != ESP_OK) {
         halt_on_error("UI init", ret);
     }
+    log_heap_status("After UI init");
 
     xTaskCreatePinnedToCore(
         ntp_task, "ntp",
@@ -163,6 +179,16 @@ void app_main(void)
         dht11_sensor_task, "dht11",
         TASK_STACK_DHT11, NULL,
         TASK_PRIO_DHT11, NULL, 0);
+
+    xTaskCreatePinnedToCore(
+        env_history_task, "history",
+        TASK_STACK_HISTORY, NULL,
+        TASK_PRIO_HISTORY, NULL, 0);
+
+    xTaskCreatePinnedToCore(
+        web_dashboard_task, "web",
+        TASK_STACK_WEB, NULL,
+        TASK_PRIO_WEB, NULL, 0);
 
     start_ui_task_or_halt();
 

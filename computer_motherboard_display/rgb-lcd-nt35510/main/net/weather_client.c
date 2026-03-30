@@ -31,6 +31,15 @@
 static weather_data_t s_data = { 0 };
 static char *s_http_buf = NULL;
 static int s_http_len = 0;
+static portMUX_TYPE s_data_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static void weather_refresh_state_locked(void)
+{
+    s_data.update_time = s_data.now_update_time > s_data.forecast_update_time
+                             ? s_data.now_update_time
+                             : s_data.forecast_update_time;
+    s_data.valid = s_data.now_valid || s_data.forecast_valid;
+}
 
 #if !CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY
 extern const char certs_isrg_root_x1_pem_start[] asm("_binary_isrg_root_x1_pem_start");
@@ -226,6 +235,13 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 
 static esp_err_t parse_now_weather(const char *json)
 {
+    char icon_code[sizeof(s_data.icon_code)] = {0};
+    int8_t temp_now = 0;
+    int8_t temp_feels = 0;
+    uint8_t humidity = 0;
+    uint16_t wind_speed_value = 0;
+    uint16_t visibility_value = 0;
+    int64_t update_time = esp_timer_get_time() / 1000000;
     cJSON *root = cJSON_Parse(json);
     if (!root) {
         return ESP_FAIL;
@@ -259,32 +275,47 @@ static esp_err_t parse_now_weather(const char *json)
     } \
 } while (0)
 
-    GET_STR("icon", s_data.icon_code);
-    GET_INT("temp", s_data.temp_now);
-    GET_INT("feelsLike", s_data.temp_feels);
-    GET_INT("humidity", s_data.humidity);
+    GET_STR("icon", icon_code);
+    GET_INT("temp", temp_now);
+    GET_INT("feelsLike", temp_feels);
+    GET_INT("humidity", humidity);
 
     cJSON *wind_speed = cJSON_GetObjectItem(now, "windSpeed");
     if (wind_speed && cJSON_IsString(wind_speed)) {
-        s_data.wind_speed = (uint16_t)atoi(wind_speed->valuestring);
+        wind_speed_value = (uint16_t)atoi(wind_speed->valuestring);
     }
 
     cJSON *visibility = cJSON_GetObjectItem(now, "vis");
     if (visibility && cJSON_IsString(visibility)) {
-        s_data.visibility = (uint16_t)atoi(visibility->valuestring);
+        visibility_value = (uint16_t)atoi(visibility->valuestring);
     }
 
 #undef GET_STR
 #undef GET_INT
 
-    s_data.update_time = esp_timer_get_time() / 1000000;
-    s_data.valid = true;
+    portENTER_CRITICAL(&s_data_lock);
+    strlcpy(s_data.icon_code, icon_code, sizeof(s_data.icon_code));
+    s_data.temp_now = temp_now;
+    s_data.temp_feels = temp_feels;
+    s_data.humidity = humidity;
+    s_data.wind_speed = wind_speed_value;
+    s_data.visibility = visibility_value;
+    s_data.now_update_time = update_time;
+    s_data.now_valid = true;
+    weather_refresh_state_locked();
+    portEXIT_CRITICAL(&s_data_lock);
+
     cJSON_Delete(root);
     return ESP_OK;
 }
 
 static esp_err_t parse_forecast(const char *json)
 {
+    weather_forecast_day_t forecast[3] = {0};
+    int8_t temp_high = 0;
+    int8_t temp_low = 0;
+    bool forecast_valid = false;
+    int64_t update_time = esp_timer_get_time() / 1000000;
     cJSON *root = cJSON_Parse(json);
     if (!root) {
         return ESP_FAIL;
@@ -317,29 +348,39 @@ static esp_err_t parse_forecast(const char *json)
 
         cJSON *item = cJSON_GetObjectItem(day, "fxDate");
         if (item && cJSON_IsString(item)) {
-            strlcpy(s_data.forecast[i].date, item->valuestring, sizeof(s_data.forecast[i].date));
+            strlcpy(forecast[i].date, item->valuestring, sizeof(forecast[i].date));
         }
 
         item = cJSON_GetObjectItem(day, "tempMax");
         if (item && cJSON_IsString(item)) {
-            s_data.forecast[i].high = (int8_t)atoi(item->valuestring);
+            forecast[i].high = (int8_t)atoi(item->valuestring);
         }
 
         item = cJSON_GetObjectItem(day, "tempMin");
         if (item && cJSON_IsString(item)) {
-            s_data.forecast[i].low = (int8_t)atoi(item->valuestring);
+            forecast[i].low = (int8_t)atoi(item->valuestring);
         }
 
         item = cJSON_GetObjectItem(day, "iconDay");
         if (item && cJSON_IsString(item)) {
-            strlcpy(s_data.forecast[i].icon_day, item->valuestring, sizeof(s_data.forecast[i].icon_day));
+            strlcpy(forecast[i].icon_day, item->valuestring, sizeof(forecast[i].icon_day));
         }
     }
 
     if (cnt > 0) {
-        s_data.temp_high = s_data.forecast[0].high;
-        s_data.temp_low = s_data.forecast[0].low;
+        temp_high = forecast[0].high;
+        temp_low = forecast[0].low;
+        forecast_valid = true;
     }
+
+    portENTER_CRITICAL(&s_data_lock);
+    memcpy(s_data.forecast, forecast, sizeof(s_data.forecast));
+    s_data.temp_high = temp_high;
+    s_data.temp_low = temp_low;
+    s_data.forecast_update_time = update_time;
+    s_data.forecast_valid = forecast_valid;
+    weather_refresh_state_locked();
+    portEXIT_CRITICAL(&s_data_lock);
 
     cJSON_Delete(root);
     return ESP_OK;
@@ -408,7 +449,9 @@ static esp_err_t http_get(const char *url, const char *api_key)
 
 esp_err_t weather_client_init(void)
 {
+    portENTER_CRITICAL(&s_data_lock);
     memset(&s_data, 0, sizeof(s_data));
+    portEXIT_CRITICAL(&s_data_lock);
     if (!s_http_buf) {
         s_http_buf = heap_caps_malloc(HTTP_BUF_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (!s_http_buf) {
@@ -425,6 +468,12 @@ esp_err_t weather_client_init(void)
 
 esp_err_t weather_client_fetch(void)
 {
+    esp_err_t now_ret = ESP_FAIL;
+    esp_err_t forecast_ret = ESP_FAIL;
+    bool valid = false;
+    int8_t temp_now = 0;
+    char icon_code[sizeof(s_data.icon_code)] = {0};
+
     if (!wifi_manager_is_connected()) {
         ESP_LOGW(TAG_WEATHER, "WiFi is not connected, skip weather update");
         return ESP_ERR_INVALID_STATE;
@@ -448,6 +497,8 @@ esp_err_t weather_client_fetch(void)
         if (parse_now_weather(s_http_buf) != ESP_OK) {
             ESP_LOGE(TAG_WEATHER, "failed to parse current weather body=%s",
                      s_http_len > 0 ? s_http_buf : "<empty>");
+        } else {
+            now_ret = ESP_OK;
         }
     }
 
@@ -457,21 +508,35 @@ esp_err_t weather_client_fetch(void)
         if (parse_forecast(s_http_buf) != ESP_OK) {
             ESP_LOGE(TAG_WEATHER, "failed to parse forecast body=%s",
                      s_http_len > 0 ? s_http_buf : "<empty>");
+        } else {
+            forecast_ret = ESP_OK;
         }
     }
 
-    if (s_data.valid) {
+    portENTER_CRITICAL(&s_data_lock);
+    valid = s_data.valid;
+    temp_now = s_data.temp_now;
+    strlcpy(icon_code, s_data.icon_code, sizeof(icon_code));
+    portEXIT_CRITICAL(&s_data_lock);
+
+    if (valid) {
         ESP_LOGI(TAG_WEATHER, "Weather updated: %dC icon=%s",
-                 s_data.temp_now, s_data.icon_code);
+                 temp_now, icon_code);
     }
 
-    return s_data.valid ? ESP_OK : ESP_FAIL;
+    if (now_ret == ESP_OK || forecast_ret == ESP_OK) {
+        return ESP_OK;
+    }
+
+    return valid ? ESP_OK : ESP_FAIL;
 }
 
 void weather_client_get_data(weather_data_t *data)
 {
     if (data) {
+        portENTER_CRITICAL(&s_data_lock);
         *data = s_data;
+        portEXIT_CRITICAL(&s_data_lock);
     }
 }
 

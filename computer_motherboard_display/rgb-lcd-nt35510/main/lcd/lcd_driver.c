@@ -329,20 +329,20 @@ static esp_err_t init_nt35510_i80_panel(void)
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(s_panel, true));
 
     s_fb_size_bytes = (size_t)LCD_H_RES * LCD_I80_DRAW_BUF_LINES * sizeof(uint16_t);
-    s_fb[0] = esp_lcd_i80_alloc_draw_buffer(s_panel_io, s_fb_size_bytes, MALLOC_CAP_INTERNAL);
-    s_fb[1] = esp_lcd_i80_alloc_draw_buffer(s_panel_io, s_fb_size_bytes, MALLOC_CAP_INTERNAL);
+    s_fb[0] = esp_lcd_i80_alloc_draw_buffer(s_panel_io, s_fb_size_bytes, MALLOC_CAP_SPIRAM);
+    s_fb[1] = esp_lcd_i80_alloc_draw_buffer(s_panel_io, s_fb_size_bytes, MALLOC_CAP_SPIRAM);
     if (!s_fb[0] || !s_fb[1]) {
         if (s_fb[0]) {
-            free(s_fb[0]);
+            heap_caps_free(s_fb[0]);
             s_fb[0] = NULL;
         }
         if (s_fb[1]) {
-            free(s_fb[1]);
+            heap_caps_free(s_fb[1]);
             s_fb[1] = NULL;
         }
-        ESP_LOGW(TAG_LCD, "Internal DMA buffer alloc failed, retrying in PSRAM");
-        s_fb[0] = esp_lcd_i80_alloc_draw_buffer(s_panel_io, s_fb_size_bytes, MALLOC_CAP_SPIRAM);
-        s_fb[1] = esp_lcd_i80_alloc_draw_buffer(s_panel_io, s_fb_size_bytes, MALLOC_CAP_SPIRAM);
+        ESP_LOGW(TAG_LCD, "PSRAM draw buffer alloc failed, retrying in internal RAM");
+        s_fb[0] = esp_lcd_i80_alloc_draw_buffer(s_panel_io, s_fb_size_bytes, MALLOC_CAP_INTERNAL);
+        s_fb[1] = esp_lcd_i80_alloc_draw_buffer(s_panel_io, s_fb_size_bytes, MALLOC_CAP_INTERNAL);
     }
     ESP_RETURN_ON_FALSE(s_fb[0] && s_fb[1], ESP_ERR_NO_MEM, TAG_LCD, "allocate nt35510 draw buffer failed");
     memset(s_fb[0], 0, s_fb_size_bytes);

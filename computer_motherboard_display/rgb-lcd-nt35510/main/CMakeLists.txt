@@ -11,8 +11,10 @@ idf_component_register(
         "net/ntp_client.c"
         "net/weather_client.c"
         "sensor/dht11_sensor.c"
+        "history/env_history.c"
         "ui/ui_renderer.c"
         "ui/ui_font_noto_sc_16.c"
+        "web/web_dashboard.c"
         "storage/config_store.c"
     INCLUDE_DIRS
         "."
@@ -21,7 +23,9 @@ idf_component_register(
         "lcd"
         "net"
         "sensor"
+        "history"
         "ui"
+        "web"
         "storage"
     REQUIRES
         esp_lcd
@@ -29,6 +33,7 @@ idf_component_register(
         esp_driver_i2s
         esp_wifi
         esp_http_client
+        esp_http_server
         lwip
         nvs_flash
         esp_timer
@@ -41,6 +46,7 @@ idf_component_register(
         mbedtls
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
+        "web/dashboard.html"
     EMBED_FILES
         ${AUDIO_TTS_FILES}
 )

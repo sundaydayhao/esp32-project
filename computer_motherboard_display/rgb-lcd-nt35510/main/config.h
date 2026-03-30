@@ -100,7 +100,7 @@
 #define DHT11_DATA_PIN              GPIO_NUM_45
 #define DHT11_START_SIGNAL_MS       20
 #define DHT11_STARTUP_DELAY_MS      1500
-#define DHT11_SAMPLE_INTERVAL_MS    2000
+#define DHT11_SAMPLE_INTERVAL_MS    (60 * 60 * 1000)
 
 /* ================================================================
  * WiFi
@@ -143,6 +143,7 @@
 #define NVS_KEY_BRIGHTNESS      "brightness"
 #define NVS_KEY_CITY_ID         "city_id"
 #define NVS_KEY_API_KEY         "api_key"
+#define NVS_KEY_ENV_HISTORY     "env_history"
 
 /* ================================================================
  * Log tags
@@ -156,6 +157,16 @@
 #define TAG_STORE       "STORE"
 #define TAG_AUDIO       "AUDIO"
 #define TAG_DHT11       "DHT11"
+#define TAG_HISTORY     "HISTORY"
+#define TAG_WEB         "WEB"
+
+/* ================================================================
+ * Web dashboard
+ * ================================================================ */
+#define ENV_HISTORY_INTERVAL_S     (60 * 60)
+#define ENV_HISTORY_CAPACITY       (24 * 7)
+#define WEB_SERVER_PORT            (80)
+#define WEB_SERVER_POLL_MS         (2000)
 
 /* ================================================================
  * Tasks
@@ -167,6 +178,8 @@
 #define TASK_STACK_CHIME        (6  * 1024)
 #define TASK_STACK_BUTTON       (4  * 1024)
 #define TASK_STACK_DHT11        (4  * 1024)
+#define TASK_STACK_HISTORY      (4  * 1024)
+#define TASK_STACK_WEB          (8  * 1024)
 #define TASK_PRIO_LCD_DIAG      3
 #define TASK_PRIO_UI            7
 #define TASK_PRIO_WEATHER       4
@@ -174,3 +187,5 @@
 #define TASK_PRIO_CHIME         4
 #define TASK_PRIO_BUTTON        4
 #define TASK_PRIO_DHT11         4
+#define TASK_PRIO_HISTORY       3
+#define TASK_PRIO_WEB           3
