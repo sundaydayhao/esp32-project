@@ -95,6 +95,14 @@
 #define BUTTON_TIME_DEBOUNCE_MS         40
 
 /* ================================================================
+ * Sensor / DHT11
+ * ================================================================ */
+#define DHT11_DATA_PIN              GPIO_NUM_45
+#define DHT11_START_SIGNAL_MS       20
+#define DHT11_STARTUP_DELAY_MS      1500
+#define DHT11_SAMPLE_INTERVAL_MS    2000
+
+/* ================================================================
  * WiFi
  * ================================================================ */
 #define WIFI_SSID_MAX_LEN       64
@@ -147,6 +155,7 @@
 #define TAG_UI          "UI"
 #define TAG_STORE       "STORE"
 #define TAG_AUDIO       "AUDIO"
+#define TAG_DHT11       "DHT11"
 
 /* ================================================================
  * Tasks
@@ -157,9 +166,11 @@
 #define TASK_STACK_NTP          (4  * 1024)
 #define TASK_STACK_CHIME        (6  * 1024)
 #define TASK_STACK_BUTTON       (4  * 1024)
+#define TASK_STACK_DHT11        (4  * 1024)
 #define TASK_PRIO_LCD_DIAG      3
 #define TASK_PRIO_UI            7
 #define TASK_PRIO_WEATHER       4
 #define TASK_PRIO_NTP           5
 #define TASK_PRIO_CHIME         4
 #define TASK_PRIO_BUTTON        4
+#define TASK_PRIO_DHT11         4

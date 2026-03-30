@@ -17,6 +17,7 @@
 #include "net/ntp_client.h"
 #include "net/weather_client.h"
 #include "net/wifi_manager.h"
+#include "sensor/dht11_sensor.h"
 
 LV_FONT_DECLARE(ui_font_noto_sc_16);
 
@@ -24,6 +25,7 @@ LV_FONT_DECLARE(ui_font_noto_sc_16);
 #define UI_MIN_DELAY_MS 10
 #define UI_MAX_DELAY_MS 100
 #define UI_STATUS_UPDATE_MS 2000
+#define UI_INDOOR_UPDATE_MS 2000
 #define UI_CLOCK_UPDATE_MS 1000
 #define UI_WEATHER_UPDATE_MS 30000
 #define UI_FLUSH_TIMEOUT_MS 1000
@@ -51,6 +53,9 @@ typedef struct {
     lv_obj_t *clock_hour_hand;
     lv_obj_t *clock_minute_hand;
     lv_obj_t *clock_second_hand;
+    lv_obj_t *indoor_temp;
+    lv_obj_t *indoor_humidity;
+    lv_obj_t *indoor_summary;
     lv_obj_t *weather_title;
     lv_obj_t *weather_temp;
     lv_obj_t *weather_cond;
@@ -76,6 +81,9 @@ typedef struct {
     char time_text[16];
     char date_text[40];
     char clock_meta_text[32];
+    char indoor_temp_text[16];
+    char indoor_humidity_text[16];
+    char indoor_summary_text[48];
     char weather_title_text[48];
     char weather_temp_text[16];
     char weather_cond_text[32];
@@ -109,16 +117,6 @@ static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t sto
     strlcpy(storage, text, storage_size);
     lv_label_set_text_static(label, storage);
     return true;
-}
-
-static const char *weekday_cn(int wday)
-{
-    static const char *weekdays[] = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-
-    if (wday < 0 || wday > 6) {
-        return "--";
-    }
-    return weekdays[wday];
 }
 
 static const char *weather_condition_text(const char *icon_code)
@@ -342,32 +340,6 @@ static void update_clock_visual(const struct tm *now)
     }
 }
 
-static void format_forecast_date(const char *date_text, char *out, size_t out_size)
-{
-    int year = 0;
-    int month = 0;
-    int day = 0;
-
-    if (!date_text || sscanf(date_text, "%d-%d-%d", &year, &month, &day) != 3) {
-        strlcpy(out, "--", out_size);
-        return;
-    }
-
-    struct tm tm_date = {
-        .tm_year = year - 1900,
-        .tm_mon = month - 1,
-        .tm_mday = day,
-        .tm_isdst = -1,
-    };
-
-    if (mktime(&tm_date) == (time_t)-1) {
-        snprintf(out, out_size, "%02d-%02d", month, day);
-        return;
-    }
-
-    strlcpy(out, weekday_cn(tm_date.tm_wday), out_size);
-}
-
 static void format_weather_update_text(int64_t update_time, char *out, size_t out_size)
 {
     if (!out || out_size == 0) {
@@ -375,7 +347,7 @@ static void format_weather_update_text(int64_t update_time, char *out, size_t ou
     }
 
     if (update_time <= 0) {
-        strlcpy(out, "更新 --", out_size);
+        strlcpy(out, "Updated --", out_size);
         return;
     }
 
@@ -386,11 +358,36 @@ static void format_weather_update_text(int64_t update_time, char *out, size_t ou
     }
 
     if (age < 60) {
-        strlcpy(out, "更新 <1m", out_size);
+        strlcpy(out, "Updated <1m", out_size);
     } else if (age < 3600) {
-        snprintf(out, out_size, "更新 %lldm前", (long long)(age / 60));
+        snprintf(out, out_size, "Updated %lldm", (long long)(age / 60));
     } else {
-        snprintf(out, out_size, "更新 %lldh前", (long long)(age / 3600));
+        snprintf(out, out_size, "Updated %lldh", (long long)(age / 3600));
+    }
+}
+
+static void format_elapsed_text_us(int64_t update_time_us, char *out, size_t out_size)
+{
+    if (!out || out_size == 0) {
+        return;
+    }
+
+    if (update_time_us <= 0) {
+        strlcpy(out, "waiting", out_size);
+        return;
+    }
+
+    int64_t age_s = (esp_timer_get_time() - update_time_us) / 1000000;
+    if (age_s < 0) {
+        age_s = 0;
+    }
+
+    if (age_s < 2) {
+        strlcpy(out, "just now", out_size);
+    } else if (age_s < 60) {
+        snprintf(out, out_size, "%llds ago", (long long)age_s);
+    } else {
+        snprintf(out, out_size, "%lldm ago", (long long)(age_s / 60));
     }
 }
 
@@ -444,37 +441,6 @@ static void set_battery_visual(int percent, bool valid)
                               percent > 20 ? lv_color_hex(0x7BE495) : lv_color_hex(0xFF8B6A), 0);
 }
 
-static void create_forecast_card(lv_obj_t *parent, int index, int x, int y, int width)
-{
-    lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_size(card, width, 88);
-    lv_obj_set_pos(card, x, y);
-    style_chip(card, lv_color_hex(0x15273A));
-
-    s_ui.forecast_date[index] = lv_label_create(card);
-    lv_obj_set_size(s_ui.forecast_date[index], LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.forecast_date[index], 0, 10);
-    style_small_cjk_label(s_ui.forecast_date[index], lv_color_hex(0x91B7DC));
-    lv_obj_set_style_text_align(s_ui.forecast_date[index], LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_ui.forecast_date[index], "");
-
-    s_ui.forecast_cond[index] = lv_label_create(card);
-    lv_obj_set_size(s_ui.forecast_cond[index], LV_PCT(100), 20);
-    lv_obj_set_pos(s_ui.forecast_cond[index], 0, 34);
-    style_small_cjk_label(s_ui.forecast_cond[index], lv_color_hex(0xF4F7FB));
-    lv_obj_set_style_text_align(s_ui.forecast_cond[index], LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(s_ui.forecast_cond[index], LV_LABEL_LONG_CLIP);
-    lv_label_set_text(s_ui.forecast_cond[index], "");
-
-    s_ui.forecast_temp[index] = lv_label_create(card);
-    lv_obj_set_size(s_ui.forecast_temp[index], LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.forecast_temp[index], 0, 58);
-    lv_obj_set_style_text_font(s_ui.forecast_temp[index], &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_ui.forecast_temp[index], lv_color_hex(0x7CD6FF), 0);
-    lv_obj_set_style_text_align(s_ui.forecast_temp[index], LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_ui.forecast_temp[index], "");
-}
-
 static void create_detail_card(lv_obj_t *parent, lv_obj_t **label, int x, int y, int width, int height)
 {
     lv_obj_t *card = lv_obj_create(parent);
@@ -488,6 +454,32 @@ static void create_detail_card(lv_obj_t *parent, lv_obj_t **label, int x, int y,
     style_small_cjk_label(*label, lv_color_hex(0xD5DFEB));
     lv_obj_set_style_text_align(*label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(*label, "");
+}
+
+static void create_indoor_metric_card(lv_obj_t *parent,
+                                      const char *title,
+                                      lv_obj_t **value_label,
+                                      int x, int y, int width, int height,
+                                      lv_color_t bg_color)
+{
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_set_size(card, width, height);
+    lv_obj_set_pos(card, x, y);
+    style_chip(card, bg_color);
+    lv_obj_set_style_pad_all(card, 12, 0);
+
+    lv_obj_t *title_label = lv_label_create(card);
+    lv_obj_set_pos(title_label, 0, 0);
+    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(title_label, lv_color_hex(0x91B7DC), 0);
+    lv_label_set_text(title_label, title);
+
+    *value_label = lv_label_create(card);
+    lv_obj_set_width(*value_label, LV_PCT(100));
+    lv_obj_align(*value_label, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_set_style_text_font(*value_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(*value_label, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(*value_label, "--");
 }
 
 static void create_clock_visual(lv_obj_t *parent)
@@ -564,11 +556,11 @@ static void create_clock_visual(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(center_dot, LV_OPA_COVER, 0);
 }
 
-static void create_weather_visual(lv_obj_t *parent)
+static void create_weather_visual(lv_obj_t *parent, int x, int y)
 {
     lv_obj_t *wrap = lv_obj_create(parent);
     lv_obj_set_size(wrap, 112, 108);
-    lv_obj_set_pos(wrap, 180, 10);
+    lv_obj_set_pos(wrap, x, y);
     lv_obj_set_style_bg_opa(wrap, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(wrap, 0, 0);
     lv_obj_set_style_pad_all(wrap, 0, 0);
@@ -751,8 +743,9 @@ static void create_ui(void)
 
     lv_obj_t *clock_title = lv_label_create(left_panel);
     lv_obj_set_pos(clock_title, 0, 0);
-    style_small_cjk_label(clock_title, lv_color_hex(0x68C1FF));
-    lv_label_set_text(clock_title, "时间");
+    lv_obj_set_style_text_font(clock_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(clock_title, lv_color_hex(0x68C1FF), 0);
+    lv_label_set_text(clock_title, "TIME");
 
     s_ui.time_label = lv_label_create(left_panel);
     lv_obj_set_size(s_ui.time_label, LV_PCT(100), LV_SIZE_CONTENT);
@@ -767,10 +760,8 @@ static void create_ui(void)
     lv_obj_set_pos(s_ui.date_label, 0, 290);
     style_small_cjk_label(s_ui.date_label, lv_color_hex(0xA7B5C8));
     lv_obj_set_style_text_align(s_ui.date_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_transform_scale(s_ui.date_label, 384, 0);
-    lv_obj_set_style_transform_pivot_x(s_ui.date_label, 170, 0);
-    lv_obj_set_style_transform_pivot_y(s_ui.date_label, 0, 0);
     lv_label_set_text(s_ui.date_label, "");
+
     s_ui.clock_meta_label = lv_label_create(left_panel);
     lv_obj_set_size(s_ui.clock_meta_label, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_pos(s_ui.clock_meta_label, 0, 334);
@@ -780,76 +771,99 @@ static void create_ui(void)
 
     create_clock_visual(left_panel);
 
+    lv_obj_t *indoor_panel = lv_obj_create(screen);
+    lv_obj_set_size(indoor_panel, 376, 124);
+    lv_obj_set_pos(indoor_panel, 408, 66);
+    style_panel(indoor_panel);
+
+    lv_obj_t *indoor_head = lv_label_create(indoor_panel);
+    lv_obj_set_pos(indoor_head, 0, 0);
+    lv_obj_set_style_text_font(indoor_head, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(indoor_head, lv_color_hex(0x68C1FF), 0);
+    lv_label_set_text(indoor_head, "INDOOR");
+
+    lv_obj_t *indoor_pin = lv_label_create(indoor_panel);
+    lv_obj_align(indoor_pin, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_set_style_text_font(indoor_pin, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(indoor_pin, lv_color_hex(0x91B7DC), 0);
+    lv_label_set_text(indoor_pin, "DHT11 / GPIO45");
+
+    create_indoor_metric_card(indoor_panel, "TEMP", &s_ui.indoor_temp,
+                              0, 30, 160, 66, lv_color_hex(0x13273D));
+    create_indoor_metric_card(indoor_panel, "RH", &s_ui.indoor_humidity,
+                              160, 30, 160, 66, lv_color_hex(0x102A2F));
+
+    s_ui.indoor_summary = lv_label_create(indoor_panel);
+    lv_obj_set_width(s_ui.indoor_summary, LV_PCT(100));
+    lv_obj_set_pos(s_ui.indoor_summary, 0, 98);
+    style_small_cjk_label(s_ui.indoor_summary, lv_color_hex(0xA7B5C8));
+    lv_obj_set_style_text_align(s_ui.indoor_summary, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(s_ui.indoor_summary, "");
+
     lv_obj_t *right_panel = lv_obj_create(screen);
-    lv_obj_set_size(right_panel, 376, 395);
-    lv_obj_set_pos(right_panel, 408, 66);
+    lv_obj_set_size(right_panel, 376, 259);
+    lv_obj_set_pos(right_panel, 408, 202);
     style_panel(right_panel);
 
     lv_obj_t *weather_head = lv_label_create(right_panel);
     lv_obj_set_pos(weather_head, 0, 0);
-    style_small_cjk_label(weather_head, lv_color_hex(0x68C1FF));
-    lv_label_set_text(weather_head, "实时天气");
-
-    s_ui.weather_title = lv_label_create(right_panel);
-    lv_obj_set_size(s_ui.weather_title, 180, LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.weather_title, 0, 26);
-    style_small_cjk_label(s_ui.weather_title, lv_color_hex(0xFFFFFF));
-    lv_label_set_text(s_ui.weather_title, "");
-
-    s_ui.weather_meta = lv_label_create(right_panel);
-    lv_obj_set_size(s_ui.weather_meta, 180, LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.weather_meta, 0, 50);
-    lv_obj_set_style_text_font(s_ui.weather_meta, &lv_font_montserrat_32, 0);
-    lv_obj_set_style_text_color(s_ui.weather_meta, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_align(s_ui.weather_meta, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_label_set_text(s_ui.weather_meta, "");
-
-    s_ui.weather_temp = lv_label_create(right_panel);
-    lv_obj_set_pos(s_ui.weather_temp, 0, 78);
-    lv_obj_set_style_text_font(s_ui.weather_temp, &lv_font_montserrat_32, 0);
-    lv_obj_set_style_text_color(s_ui.weather_temp, lv_color_hex(0xFFFFFF), 0);
-    lv_label_set_text(s_ui.weather_temp, "");
-
-    s_ui.weather_cond = lv_label_create(right_panel);
-    lv_obj_set_size(s_ui.weather_cond, 112, LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.weather_cond, 180, 108);
-    style_small_cjk_label(s_ui.weather_cond, lv_color_hex(0x68C1FF));
-    lv_obj_set_style_text_align(s_ui.weather_cond, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_ui.weather_cond, "");
-
-    create_weather_visual(right_panel);
-
-    lv_obj_t *forecast_title = lv_label_create(right_panel);
-    lv_obj_set_pos(forecast_title, 0, 244);
-    style_small_cjk_label(forecast_title, lv_color_hex(0x68C1FF));
-    lv_label_set_text(forecast_title, "3日天气");
+    lv_obj_set_style_text_font(weather_head, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(weather_head, lv_color_hex(0x68C1FF), 0);
+    lv_label_set_text(weather_head, "OUTDOOR");
 
     s_ui.weather_update = lv_label_create(right_panel);
     lv_obj_set_size(s_ui.weather_update, 120, LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.weather_update, 184, 244);
+    lv_obj_set_pos(s_ui.weather_update, 184, 0);
     style_small_cjk_label(s_ui.weather_update, lv_color_hex(0x7D92A9));
     lv_obj_set_style_text_align(s_ui.weather_update, LV_TEXT_ALIGN_RIGHT, 0);
     lv_label_set_text(s_ui.weather_update, "");
 
-    create_detail_card(right_panel, &s_ui.detail_humidity, 0, 156, 148, 34);
-    create_detail_card(right_panel, &s_ui.detail_feels, 156, 156, 148, 34);
-    create_detail_card(right_panel, &s_ui.detail_wind, 0, 198, 148, 34);
-    create_detail_card(right_panel, &s_ui.detail_vis, 156, 198, 148, 34);
+    s_ui.weather_title = lv_label_create(right_panel);
+    lv_obj_set_size(s_ui.weather_title, 180, LV_SIZE_CONTENT);
+    lv_obj_set_pos(s_ui.weather_title, 0, 28);
+    style_small_cjk_label(s_ui.weather_title, lv_color_hex(0xFFFFFF));
+    lv_label_set_text(s_ui.weather_title, "");
 
-    create_forecast_card(right_panel, 0, 0, 274, 94);
-    create_forecast_card(right_panel, 1, 104, 274, 94);
-    create_forecast_card(right_panel, 2, 208, 274, 94);
+    s_ui.weather_temp = lv_label_create(right_panel);
+    lv_obj_set_pos(s_ui.weather_temp, 0, 52);
+    lv_obj_set_style_text_font(s_ui.weather_temp, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(s_ui.weather_temp, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(s_ui.weather_temp, "");
+
+    s_ui.weather_meta = lv_label_create(right_panel);
+    lv_obj_set_size(s_ui.weather_meta, 180, LV_SIZE_CONTENT);
+    lv_obj_set_pos(s_ui.weather_meta, 0, 94);
+    lv_obj_set_style_text_font(s_ui.weather_meta, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_ui.weather_meta, lv_color_hex(0xA7B5C8), 0);
+    lv_label_set_text(s_ui.weather_meta, "");
+
+    s_ui.weather_cond = lv_label_create(right_panel);
+    lv_obj_set_size(s_ui.weather_cond, 112, LV_SIZE_CONTENT);
+    lv_obj_set_pos(s_ui.weather_cond, 194, 116);
+    style_small_cjk_label(s_ui.weather_cond, lv_color_hex(0x68C1FF));
+    lv_obj_set_style_text_align(s_ui.weather_cond, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(s_ui.weather_cond, "");
+
+    create_weather_visual(right_panel, 192, 22);
+
+    create_detail_card(right_panel, &s_ui.detail_humidity, 0, 154, 148, 34);
+    create_detail_card(right_panel, &s_ui.detail_feels, 156, 154, 148, 34);
+    create_detail_card(right_panel, &s_ui.detail_wind, 0, 196, 148, 34);
+    create_detail_card(right_panel, &s_ui.detail_vis, 156, 196, 148, 34);
 
     set_label_text_if_changed(s_ui.status_label, s_ui.status_text, sizeof(s_ui.status_text), "WiFi");
-    set_label_text_if_changed(s_ui.top_clock_label, s_ui.top_clock_text, sizeof(s_ui.top_clock_text), "数字时钟");
+    set_label_text_if_changed(s_ui.top_clock_label, s_ui.top_clock_text, sizeof(s_ui.top_clock_text), "Digital Clock");
     set_label_text_if_changed(s_ui.battery_label, s_ui.battery_text, sizeof(s_ui.battery_text), "100%");
     set_battery_visual(100, true);
     set_wifi_signal_visual(false, -127);
     set_label_text_if_changed(s_ui.clock_meta_label, s_ui.clock_meta_text, sizeof(s_ui.clock_meta_text), "NTP");
-    set_label_text_if_changed(s_ui.weather_title, s_ui.weather_title_text, sizeof(s_ui.weather_title_text), "天气");
+    set_label_text_if_changed(s_ui.indoor_temp, s_ui.indoor_temp_text, sizeof(s_ui.indoor_temp_text), "--");
+    set_label_text_if_changed(s_ui.indoor_humidity, s_ui.indoor_humidity_text, sizeof(s_ui.indoor_humidity_text), "--");
+    set_label_text_if_changed(s_ui.indoor_summary, s_ui.indoor_summary_text, sizeof(s_ui.indoor_summary_text), "Waiting for DHT11");
+    set_label_text_if_changed(s_ui.weather_title, s_ui.weather_title_text, sizeof(s_ui.weather_title_text), "Weather");
     set_label_text_if_changed(s_ui.weather_cond, s_ui.weather_cond_text, sizeof(s_ui.weather_cond_text), "");
     set_label_text_if_changed(s_ui.weather_meta, s_ui.weather_meta_text, sizeof(s_ui.weather_meta_text), "-- ~ --");
-    set_label_text_if_changed(s_ui.weather_update, s_ui.weather_update_text, sizeof(s_ui.weather_update_text), "更新 --");
+    set_label_text_if_changed(s_ui.weather_update, s_ui.weather_update_text, sizeof(s_ui.weather_update_text), "Updated --");
 }
 
 static void update_status_text(void)
@@ -865,6 +879,7 @@ static void update_status_text(void)
 
 static void update_clock_text(void)
 {
+    static const char *weekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     struct tm now;
     char new_time[sizeof(s_ui.time_text)];
     char new_date[sizeof(s_ui.date_text)];
@@ -873,14 +888,47 @@ static void update_clock_text(void)
     ntp_client_get_local_time(&now);
 
     snprintf(new_time, sizeof(new_time), "%02d:%02d:%02d", now.tm_hour, now.tm_min, now.tm_sec);
-    snprintf(new_date, sizeof(new_date), "%04d年%02d月%02d日 %s",
-             now.tm_year + 1900, now.tm_mon + 1, now.tm_mday, weekday_cn(now.tm_wday));
-    strlcpy(clock_meta_text, ntp_client_is_synced() ? "NTP已同步" : "NTP同步中", sizeof(clock_meta_text));
+    snprintf(new_date, sizeof(new_date), "%04d-%02d-%02d %s",
+             now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
+             (now.tm_wday >= 0 && now.tm_wday < 7) ? weekdays[now.tm_wday] : "--");
+    strlcpy(clock_meta_text, ntp_client_is_synced() ? "NTP synced" : "NTP syncing", sizeof(clock_meta_text));
 
     set_label_text_if_changed(s_ui.time_label, s_ui.time_text, sizeof(s_ui.time_text), new_time);
     set_label_text_if_changed(s_ui.date_label, s_ui.date_text, sizeof(s_ui.date_text), new_date);
     set_label_text_if_changed(s_ui.clock_meta_label, s_ui.clock_meta_text, sizeof(s_ui.clock_meta_text), clock_meta_text);
     update_clock_visual(&now);
+}
+
+static void update_indoor_text(void)
+{
+    dht11_data_t indoor = {0};
+    char indoor_temp_text[sizeof(s_ui.indoor_temp_text)];
+    char indoor_humidity_text[sizeof(s_ui.indoor_humidity_text)];
+    char indoor_summary_text[sizeof(s_ui.indoor_summary_text)];
+    char age_text[20];
+
+    dht11_sensor_get_data(&indoor);
+
+    if (!indoor.valid) {
+        strlcpy(indoor_temp_text, "--", sizeof(indoor_temp_text));
+        strlcpy(indoor_humidity_text, "--", sizeof(indoor_humidity_text));
+        if (indoor.error_count > 0) {
+            snprintf(indoor_summary_text, sizeof(indoor_summary_text),
+                     "DHT11 retry / err %lu", (unsigned long)indoor.error_count);
+        } else {
+            strlcpy(indoor_summary_text, "Waiting for DHT11", sizeof(indoor_summary_text));
+        }
+    } else {
+        snprintf(indoor_temp_text, sizeof(indoor_temp_text), "%d%sC",
+                 indoor.temperature_c, UI_DEGREE_SYMBOL);
+        snprintf(indoor_humidity_text, sizeof(indoor_humidity_text), "%u%%", indoor.humidity);
+        format_elapsed_text_us(indoor.update_time_us, age_text, sizeof(age_text));
+        snprintf(indoor_summary_text, sizeof(indoor_summary_text), "GPIO45 / %s", age_text);
+    }
+
+    set_label_text_if_changed(s_ui.indoor_temp, s_ui.indoor_temp_text, sizeof(s_ui.indoor_temp_text), indoor_temp_text);
+    set_label_text_if_changed(s_ui.indoor_humidity, s_ui.indoor_humidity_text, sizeof(s_ui.indoor_humidity_text), indoor_humidity_text);
+    set_label_text_if_changed(s_ui.indoor_summary, s_ui.indoor_summary_text, sizeof(s_ui.indoor_summary_text), indoor_summary_text);
 }
 
 static void update_weather_text(void)
@@ -895,48 +943,32 @@ static void update_weather_text(void)
     char detail_feels_text[sizeof(s_ui.detail_feels_text)];
     char detail_wind_text[sizeof(s_ui.detail_wind_text)];
     char detail_vis_text[sizeof(s_ui.detail_vis_text)];
-    char forecast_date_text[3][16] = {{0}};
-    char forecast_cond_text[3][24] = {{0}};
-    char forecast_temp_text[3][16] = {{0}};
 
     weather_client_get_data(&weather);
 
     if (!weather.valid) {
-        strlcpy(weather_title_text, "天气", sizeof(weather_title_text));
+        strlcpy(weather_title_text, "Weather", sizeof(weather_title_text));
         strlcpy(weather_temp_text, "", sizeof(weather_temp_text));
-        strlcpy(weather_cond_text, "更新中...", sizeof(weather_cond_text));
+        strlcpy(weather_cond_text, "Updating...", sizeof(weather_cond_text));
         snprintf(weather_meta_text, sizeof(weather_meta_text), "-- ~ --%sC", UI_DEGREE_SYMBOL);
-        strlcpy(weather_update_text, "更新 --", sizeof(weather_update_text));
-        strlcpy(detail_humidity_text, "湿度 --", sizeof(detail_humidity_text));
-        strlcpy(detail_feels_text, "体感 --", sizeof(detail_feels_text));
-        strlcpy(detail_wind_text, "风速 --", sizeof(detail_wind_text));
-        strlcpy(detail_vis_text, "能见 --", sizeof(detail_vis_text));
-        for (int i = 0; i < 3; i++) {
-            snprintf(forecast_date_text[i], sizeof(forecast_date_text[i]), "第%d天", i + 1);
-            strlcpy(forecast_cond_text[i], "--", sizeof(forecast_cond_text[i]));
-            strlcpy(forecast_temp_text[i], "--", sizeof(forecast_temp_text[i]));
-        }
+        strlcpy(weather_update_text, "Updated --", sizeof(weather_update_text));
+        strlcpy(detail_humidity_text, "RH --", sizeof(detail_humidity_text));
+        strlcpy(detail_feels_text, "Feels --", sizeof(detail_feels_text));
+        strlcpy(detail_wind_text, "Wind --", sizeof(detail_wind_text));
+        strlcpy(detail_vis_text, "Vis --", sizeof(detail_vis_text));
         set_weather_icon_mode(WEATHER_ICON_PARTLY_CLOUDY);
     } else {
-        strlcpy(weather_title_text, "当前天气", sizeof(weather_title_text));
-
-        strlcpy(weather_temp_text, "", sizeof(weather_temp_text));
+        strlcpy(weather_title_text, "Outdoor Weather", sizeof(weather_title_text));
+        snprintf(weather_temp_text, sizeof(weather_temp_text), "%d%sC",
+                 weather.temp_now, UI_DEGREE_SYMBOL);
         snprintf(weather_cond_text, sizeof(weather_cond_text), "%s", weather_condition_text(weather.icon_code));
         snprintf(weather_meta_text, sizeof(weather_meta_text), "%d ~ %d%sC",
                  weather.temp_low, weather.temp_high, UI_DEGREE_SYMBOL);
         format_weather_update_text(weather.update_time, weather_update_text, sizeof(weather_update_text));
-        snprintf(detail_humidity_text, sizeof(detail_humidity_text), "湿度 %u%%", weather.humidity);
-        snprintf(detail_feels_text, sizeof(detail_feels_text), "体感 %d度", weather.temp_feels);
-        snprintf(detail_wind_text, sizeof(detail_wind_text), "风速 %ukm/h", weather.wind_speed);
-        snprintf(detail_vis_text, sizeof(detail_vis_text), "能见 %ukm", weather.visibility);
-
-        for (int i = 0; i < 3; i++) {
-            format_forecast_date(weather.forecast[i].date, forecast_date_text[i], sizeof(forecast_date_text[i]));
-            snprintf(forecast_cond_text[i], sizeof(forecast_cond_text[i]), "%s",
-                     weather_condition_text(weather.forecast[i].icon_day));
-            snprintf(forecast_temp_text[i], sizeof(forecast_temp_text[i]), "%d/%d%sC",
-                     weather.forecast[i].high, weather.forecast[i].low, UI_DEGREE_SYMBOL);
-        }
+        snprintf(detail_humidity_text, sizeof(detail_humidity_text), "RH %u%%", weather.humidity);
+        snprintf(detail_feels_text, sizeof(detail_feels_text), "Feels %dC", weather.temp_feels);
+        snprintf(detail_wind_text, sizeof(detail_wind_text), "Wind %ukm/h", weather.wind_speed);
+        snprintf(detail_vis_text, sizeof(detail_vis_text), "Vis %ukm", weather.visibility);
         set_weather_icon_mode(weather_icon_mode_from_code(weather.icon_code));
     }
 
@@ -949,18 +981,13 @@ static void update_weather_text(void)
     set_label_text_if_changed(s_ui.detail_feels, s_ui.detail_feels_text, sizeof(s_ui.detail_feels_text), detail_feels_text);
     set_label_text_if_changed(s_ui.detail_wind, s_ui.detail_wind_text, sizeof(s_ui.detail_wind_text), detail_wind_text);
     set_label_text_if_changed(s_ui.detail_vis, s_ui.detail_vis_text, sizeof(s_ui.detail_vis_text), detail_vis_text);
-
-    for (int i = 0; i < 3; i++) {
-        set_label_text_if_changed(s_ui.forecast_date[i], s_ui.forecast_date_text[i], sizeof(s_ui.forecast_date_text[i]), forecast_date_text[i]);
-        set_label_text_if_changed(s_ui.forecast_cond[i], s_ui.forecast_cond_text[i], sizeof(s_ui.forecast_cond_text[i]), forecast_cond_text[i]);
-        set_label_text_if_changed(s_ui.forecast_temp[i], s_ui.forecast_temp_text[i], sizeof(s_ui.forecast_temp_text[i]), forecast_temp_text[i]);
-    }
 }
 
 static void update_all_ui_text(void)
 {
     update_status_text();
     update_clock_text();
+    update_indoor_text();
     update_weather_text();
 }
 
@@ -1021,6 +1048,7 @@ esp_err_t ui_renderer_init(void)
 void ui_renderer_task(void *arg)
 {
     int64_t last_status_update_us = 0;
+    int64_t last_indoor_update_us = 0;
     int64_t last_clock_update_us = 0;
     int64_t last_weather_update_us = 0;
     LV_UNUSED(arg);
@@ -1032,6 +1060,11 @@ void ui_renderer_task(void *arg)
         if (last_status_update_us == 0 || now_us - last_status_update_us >= (int64_t)UI_STATUS_UPDATE_MS * 1000) {
             update_status_text();
             last_status_update_us = now_us;
+        }
+
+        if (last_indoor_update_us == 0 || now_us - last_indoor_update_us >= (int64_t)UI_INDOOR_UPDATE_MS * 1000) {
+            update_indoor_text();
+            last_indoor_update_us = now_us;
         }
 
         if (last_clock_update_us == 0 || now_us - last_clock_update_us >= (int64_t)UI_CLOCK_UPDATE_MS * 1000) {

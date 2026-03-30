@@ -10,6 +10,7 @@ idf_component_register(
         "net/wifi_manager.c"
         "net/ntp_client.c"
         "net/weather_client.c"
+        "sensor/dht11_sensor.c"
         "ui/ui_renderer.c"
         "ui/ui_font_noto_sc_16.c"
         "storage/config_store.c"
@@ -19,6 +20,7 @@ idf_component_register(
         "input"
         "lcd"
         "net"
+        "sensor"
         "ui"
         "storage"
     REQUIRES

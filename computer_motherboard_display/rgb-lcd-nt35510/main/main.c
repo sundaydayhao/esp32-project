@@ -14,6 +14,7 @@
 #include "net/ntp_client.h"
 #include "net/weather_client.h"
 #include "net/wifi_manager.h"
+#include "sensor/dht11_sensor.h"
 #include "storage/config_store.h"
 #include "ui/ui_renderer.h"
 
@@ -109,10 +110,15 @@ void app_main(void)
 #if SYSTEM_BOOT_MODE == BOOT_MODE_UI_ONLY
     ESP_LOGW(TAG_MAIN, "Boot mode: UI only");
     ESP_ERROR_CHECK(weather_client_init());
+    ESP_ERROR_CHECK(dht11_sensor_init());
     ret = ui_renderer_init();
     if (ret != ESP_OK) {
         halt_on_error("UI init", ret);
     }
+    xTaskCreatePinnedToCore(
+        dht11_sensor_task, "dht11",
+        TASK_STACK_DHT11, NULL,
+        TASK_PRIO_DHT11, NULL, 0);
     start_ui_task_or_halt();
     ESP_LOGI(TAG_MAIN, "UI-only mode started");
     return;
@@ -126,6 +132,7 @@ void app_main(void)
     }
 
     ESP_ERROR_CHECK(weather_client_init());
+    ESP_ERROR_CHECK(dht11_sensor_init());
 
     ret = ui_renderer_init();
     if (ret != ESP_OK) {
@@ -151,6 +158,11 @@ void app_main(void)
         button_time_announce_task, "button_time",
         TASK_STACK_BUTTON, NULL,
         TASK_PRIO_BUTTON, NULL, 0);
+
+    xTaskCreatePinnedToCore(
+        dht11_sensor_task, "dht11",
+        TASK_STACK_DHT11, NULL,
+        TASK_PRIO_DHT11, NULL, 0);
 
     start_ui_task_or_halt();
 
