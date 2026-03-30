@@ -1,9 +1,9 @@
 /**
- * @file lcd12864_gfx.h
- * @brief LCD12864 图形层：5x7 字体渲染 + 天气 Emoji 图标
+ * @file lcd1602_gfx.h
+ * @brief LCD1602 图形层：5x7 字体渲染 + 天气 Emoji 图标
  *
  * 本模块工作在图形模式（GDRAM）下，维护一个 128x64 帧缓冲区，
- * 所有绘制操作在缓冲区中完成，调用 lcd12864_gfx_flush() 一次性刷新到屏幕。
+ * 所有绘制操作在缓冲区中完成，调用 lcd1602_gfx_flush() 一次性刷新到屏幕。
  *
  * 天气图标（16x16 单色位图）：
  *   ☀  晴天（太阳 + 射线）
@@ -45,17 +45,17 @@ typedef enum {
 /**
  * @brief 初始化 GFX 层（进入图形模式，清空帧缓冲区）
  */
-void lcd12864_gfx_init(void);
+void lcd1602_gfx_init(void);
 
 /**
  * @brief 清空帧缓冲区（不立即刷新屏幕）
  */
-void lcd12864_gfx_clear(void);
+void lcd1602_gfx_clear(void);
 
 /**
  * @brief 将帧缓冲区内容刷新到 LCD 屏幕
  */
-void lcd12864_gfx_flush(void);
+void lcd1602_gfx_flush(void);
 
 /* ----------------------------------------------------------------
  * 基本绘制
@@ -67,22 +67,22 @@ void lcd12864_gfx_flush(void);
  * @param y    行 0~63
  * @param on   true=点亮，false=熄灭
  */
-void lcd12864_gfx_pixel(uint8_t x, uint8_t y, bool on);
+void lcd1602_gfx_pixel(uint8_t x, uint8_t y, bool on);
 
 /**
  * @brief 绘制水平线
  */
-void lcd12864_gfx_hline(uint8_t x, uint8_t y, uint8_t w, bool on);
+void lcd1602_gfx_hline(uint8_t x, uint8_t y, uint8_t w, bool on);
 
 /**
  * @brief 绘制矩形边框
  */
-void lcd12864_gfx_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on);
+void lcd1602_gfx_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on);
 
 /**
  * @brief 绘制填充矩形
  */
-void lcd12864_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on);
+void lcd1602_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on);
 
 /* ----------------------------------------------------------------
  * 文字渲染（5x7 ASCII 字体，字符间距 6x8）
@@ -95,7 +95,7 @@ void lcd12864_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on)
  * @param c    ASCII 字符（32~126）
  * @param on   true=亮色，false=暗色
  */
-void lcd12864_gfx_char(uint8_t x, uint8_t y, char c, bool on);
+void lcd1602_gfx_char(uint8_t x, uint8_t y, char c, bool on);
 
 /**
  * @brief Draw one ASCII character with integer scaling
@@ -105,7 +105,7 @@ void lcd12864_gfx_char(uint8_t x, uint8_t y, char c, bool on);
  * @param scale  Pixel scale factor, >= 1
  * @param on     true=lit, false=dark
  */
-void lcd12864_gfx_char_scaled(uint8_t x, uint8_t y, char c, uint8_t scale, bool on);
+void lcd1602_gfx_char_scaled(uint8_t x, uint8_t y, char c, uint8_t scale, bool on);
 
 /**
  * @brief 绘制 ASCII 字符串
@@ -114,7 +114,7 @@ void lcd12864_gfx_char_scaled(uint8_t x, uint8_t y, char c, uint8_t scale, bool 
  * @param str  字符串（仅支持 ASCII 32~126）
  * @param on   true=亮色，false=暗色
  */
-void lcd12864_gfx_str(uint8_t x, uint8_t y, const char *str, bool on);
+void lcd1602_gfx_str(uint8_t x, uint8_t y, const char *str, bool on);
 
 /**
  * @brief Draw ASCII string with integer scaling
@@ -124,7 +124,7 @@ void lcd12864_gfx_str(uint8_t x, uint8_t y, const char *str, bool on);
  * @param scale  Pixel scale factor, >= 1
  * @param on     true=lit, false=dark
  */
-void lcd12864_gfx_str_scaled(uint8_t x, uint8_t y, const char *str, uint8_t scale, bool on);
+void lcd1602_gfx_str_scaled(uint8_t x, uint8_t y, const char *str, uint8_t scale, bool on);
 
 /* ----------------------------------------------------------------
  * 天气图标
@@ -136,14 +136,14 @@ void lcd12864_gfx_str_scaled(uint8_t x, uint8_t y, const char *str, uint8_t scal
  * @param y     左上角行坐标（0~48）
  * @param icon  图标类型
  */
-void lcd12864_gfx_weather_icon(uint8_t x, uint8_t y, weather_icon_t icon);
+void lcd1602_gfx_weather_icon(uint8_t x, uint8_t y, weather_icon_t icon);
 
 /**
  * @brief 根据天气文字（UTF-8）自动选择图标
  * @param text  和风天气 API 返回的天气文字，如 "晴"、"多云"
  * @return 对应的图标枚举值
  */
-weather_icon_t lcd12864_gfx_text_to_icon(const char *text);
+weather_icon_t lcd1602_gfx_text_to_icon(const char *text);
 
 #ifdef __cplusplus
 }

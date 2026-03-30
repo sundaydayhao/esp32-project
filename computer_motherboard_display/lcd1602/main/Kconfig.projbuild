@@ -1,4 +1,4 @@
-menu "LCD12864 Clock Configuration"
+menu "LCD1602 Clock Configuration"
 
     menu "WiFi Settings"
         config WIFI_SSID
@@ -14,56 +14,56 @@ menu "LCD12864 Clock Configuration"
                 WiFi 密码
     endmenu
 
-    menu "LCD12864 Pin Configuration (8-bit Parallel)"
+    menu "LCD1602 Pin Configuration (8-bit Parallel)"
         comment "数据总线 D0~D7（8位并行）"
 
         config LCD_PIN_D0
             int "LCD D0 GPIO"
             default 12
             help
-                LCD12864 数据总线 D0 引脚
+                LCD1602 数据总线 D0 引脚
 
         config LCD_PIN_D1
             int "LCD D1 GPIO"
             default 13
             help
-                LCD12864 数据总线 D1 引脚
+                LCD1602 数据总线 D1 引脚
 
         config LCD_PIN_D2
             int "LCD D2 GPIO"
             default 14
             help
-                LCD12864 数据总线 D2 引脚
+                LCD1602 数据总线 D2 引脚
 
         config LCD_PIN_D3
             int "LCD D3 GPIO"
             default 15
             help
-                LCD12864 数据总线 D3 引脚
+                LCD1602 数据总线 D3 引脚
 
         config LCD_PIN_D4
             int "LCD D4 GPIO"
             default 16
             help
-                LCD12864 数据总线 D4 引脚
+                LCD1602 数据总线 D4 引脚
 
         config LCD_PIN_D5
             int "LCD D5 GPIO"
             default 17
             help
-                LCD12864 数据总线 D5 引脚
+                LCD1602 数据总线 D5 引脚
 
         config LCD_PIN_D6
             int "LCD D6 GPIO"
             default 18
             help
-                LCD12864 数据总线 D6 引脚
+                LCD1602 数据总线 D6 引脚
 
         config LCD_PIN_D7
             int "LCD D7 GPIO"
             default 19
             help
-                LCD12864 数据总线 D7 引脚
+                LCD1602 数据总线 D7 引脚
 
         comment "控制信号"
 
@@ -71,20 +71,20 @@ menu "LCD12864 Clock Configuration"
             int "LCD RS GPIO"
             default 21
             help
-                LCD12864 寄存器选择引脚（0=命令，1=数据）
+                LCD1602 寄存器选择引脚（0=命令，1=数据）
 
         config LCD_PIN_E
             int "LCD E (Enable) GPIO"
             default 22
             help
-                LCD12864 使能引脚（下降沿锁存数据）
+                LCD1602 使能引脚（下降沿锁存数据）
                 注意：RW 引脚请直接接 GND（始终写模式）
 
         config LCD_PIN_RST
             int "LCD RST GPIO"
             default 4
             help
-                LCD12864 复位引脚（低电平有效）
+                LCD1602 复位引脚（低电平有效）
     endmenu
 
     menu "Weather API Settings"

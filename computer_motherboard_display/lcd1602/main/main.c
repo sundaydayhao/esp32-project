@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief ESP32 + LCD12864 clock and weather display
+ * @brief ESP32 LCD1602 clock and weather display
  */
 
 #include <stdio.h>
@@ -13,7 +13,7 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 
-#include "lcd12864.h"
+#include "lcd1602.h"
 #include "wifi_manager.h"
 #include "ntp_client.h"
 #include "weather_client.h"
@@ -73,10 +73,9 @@ static void display_task(void *arg)
 
     ESP_LOGI(TAG, "Display task started");
 
-    lcd12864_enter_text_mode();
-    lcd12864_clear();
-    lcd12864_print_at(0, 0, "Display start");
-    lcd12864_print_at(1, 0, "WiFi/NTP/WX...");
+    lcd1602_clear();
+    lcd1602_write_at(0, 0, "Display start");
+    lcd1602_write_at(1, 0, "WiFi/NTP/WX...");
 
     while (1) {
         ntp_client_get_time(&t);
@@ -89,45 +88,25 @@ static void display_task(void *arg)
 
         weather_client_get_data(&wx);
 
-        lcd12864_clear();
-
         if (ntp_client_is_synced()) {
-            snprintf(buf, sizeof(buf), "%02d:%02d:%02d %-7s",
+            snprintf(buf, sizeof(buf), "%02d:%02d:%02d %-4s",
                      t.tm_hour, t.tm_min, t.tm_sec,
                      wx.valid ? weather_text_to_ascii(wx.text) : "N/A");
         } else {
-            snprintf(buf, sizeof(buf), "--:--:-- %-7s",
+            snprintf(buf, sizeof(buf), "--:--:-- %-4s",
                      wx.valid ? weather_text_to_ascii(wx.text) : "N/A");
         }
-        lcd12864_print_at(0, 0, buf);
+        lcd1602_write_at(0, 0, "                ");
+        lcd1602_write_at(0, 0, buf);
 
         if (ntp_client_is_synced()) {
-            snprintf(buf, sizeof(buf), "%04d-%02d-%02d %s",
-                     t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-                     s_wday[t.tm_wday]);
+            snprintf(buf, sizeof(buf), "%02d-%02d %s",
+                     t.tm_mon + 1, t.tm_mday, s_wday[t.tm_wday]);
         } else {
-            snprintf(buf, sizeof(buf), "---- -- -- ---");
+            snprintf(buf, sizeof(buf), "-- -- ---");
         }
-        lcd12864_print_at(1, 0, buf);
-
-        if (wx.valid) {
-            snprintf(buf, sizeof(buf), "T:%dC H:%u%%",
-                     (int)wx.temp, (unsigned)wx.humidity);
-        } else {
-            snprintf(buf, sizeof(buf), "T:--C H:--%%");
-        }
-        lcd12864_print_at(2, 0, buf);
-
-        if (wifi_manager_is_connected() && ntp_client_is_synced()) {
-            snprintf(buf, sizeof(buf), "WIFI OK NTP OK");
-        } else if (wifi_manager_is_connected()) {
-            snprintf(buf, sizeof(buf), "WIFI OK NTP ..");
-        } else if (ntp_client_is_synced()) {
-            snprintf(buf, sizeof(buf), "WIFI .. NTP OK");
-        } else {
-            snprintf(buf, sizeof(buf), "WIFI .. NTP ..");
-        }
-        lcd12864_print_at(3, 0, buf);
+        lcd1602_write_at(1, 0, "                ");
+        lcd1602_write_at(1, 0, buf);
 
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -136,9 +115,9 @@ static void display_task(void *arg)
 void app_main(void)
 {
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  LCD12864 Clock & Weather v1.1");
+    ESP_LOGI(TAG, "  LCD1602 Clock & Weather v2.0");
     ESP_LOGI(TAG, "  Target: %s", CONFIG_IDF_TARGET);
-    ESP_LOGI(TAG, "  ST7920 128x64 (8-bit parallel)");
+    ESP_LOGI(TAG, "  16x2 HD44780 compatible display");
     ESP_LOGI(TAG, "========================================");
 
     esp_err_t ret = nvs_flash_init();
@@ -150,7 +129,7 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ret = lcd12864_init();
+    ret = lcd1602_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "LCD init failed: %s", esp_err_to_name(ret));
         while (1) {
@@ -158,24 +137,23 @@ void app_main(void)
         }
     }
 
-    lcd12864_clear();
-    lcd12864_print_at(0, 0, "LCD12864 Clock");
-    lcd12864_print_at(1, 0, "Booting...");
-    lcd12864_print_at(2, 0, "WiFi start");
+    lcd1602_clear();
+    lcd1602_write_at(0, 0, "LCD1602 Clock");
+    lcd1602_write_at(1, 0, "Booting...");
 
     ret = wifi_manager_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
-        lcd12864_print_at(2, 0, "WiFi init fail");
+        lcd1602_write_at(1, 0, "WiFi fail");
     }
 
     ret = wifi_manager_wait_connected(15000);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "WiFi connected");
-        lcd12864_print_at(2, 0, "WiFi connected");
+        lcd1602_write_at(1, 0, "WiFi OK");
     } else {
         ESP_LOGW(TAG, "WiFi not connected, offline mode");
-        lcd12864_print_at(2, 0, "WiFi failed");
+        lcd1602_write_at(1, 0, "Offline mode");
     }
 
     ESP_ERROR_CHECK(weather_client_init());
