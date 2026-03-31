@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <cmath>
 #include <font_awesome.h>
 #include <esp_log.h>
 #include <esp_err.h>
@@ -22,6 +23,28 @@ LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
 LV_FONT_DECLARE(font_awesome_30_4);
 
+namespace {
+constexpr float kPi = 3.14159265358979323846f;
+
+float DegreesToRadians(float degrees) {
+    return (degrees - 90.0f) * kPi / 180.0f;
+}
+
+lv_coord_t ClampCoord(int value) {
+    return static_cast<lv_coord_t>(value);
+}
+
+std::string FormatWeatherTemperature(const char* temperature) {
+    if (temperature == nullptr || temperature[0] == '\0') {
+        return "--";
+    }
+    if (strchr(temperature, 'C') != nullptr || strchr(temperature, 'c') != nullptr) {
+        return temperature;
+    }
+    return std::string(temperature) + " C";
+}
+}
+
 void LcdDisplay::InitializeLcdThemes() {
     auto text_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_TEXT_FONT);
     auto icon_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_ICON_FONT);
@@ -31,9 +54,9 @@ void LcdDisplay::InitializeLcdThemes() {
     auto light_theme = new LvglTheme("light");
     light_theme->set_background_color(lv_color_hex(0xFFFFFF));
     light_theme->set_text_color(lv_color_hex(0x000000));
-    light_theme->set_chat_background_color(lv_color_hex(0xE0E0E0));
-    light_theme->set_user_bubble_color(lv_color_hex(0x00FF00));
-    light_theme->set_assistant_bubble_color(lv_color_hex(0xDDDDDD));
+    light_theme->set_chat_background_color(lv_color_hex(0xF5F5F5));
+    light_theme->set_user_bubble_color(lv_color_hex(0xFFFFFF));
+    light_theme->set_assistant_bubble_color(lv_color_hex(0x95EC69));
     light_theme->set_system_bubble_color(lv_color_hex(0xFFFFFF));
     light_theme->set_system_text_color(lv_color_hex(0x000000));
     light_theme->set_border_color(lv_color_hex(0x000000));
@@ -46,9 +69,9 @@ void LcdDisplay::InitializeLcdThemes() {
     auto dark_theme = new LvglTheme("dark");
     dark_theme->set_background_color(lv_color_hex(0x000000));
     dark_theme->set_text_color(lv_color_hex(0xFFFFFF));
-    dark_theme->set_chat_background_color(lv_color_hex(0x1F1F1F));
-    dark_theme->set_user_bubble_color(lv_color_hex(0x00FF00));
-    dark_theme->set_assistant_bubble_color(lv_color_hex(0x222222));
+    dark_theme->set_chat_background_color(lv_color_hex(0x141414));
+    dark_theme->set_user_bubble_color(lv_color_hex(0x2A2A2A));
+    dark_theme->set_assistant_bubble_color(lv_color_hex(0x2F6D2A));
     dark_theme->set_system_bubble_color(lv_color_hex(0x000000));
     dark_theme->set_system_text_color(lv_color_hex(0xFFFFFF));
     dark_theme->set_border_color(lv_color_hex(0xFFFFFF));
@@ -348,6 +371,358 @@ bool LcdDisplay::Lock(int timeout_ms) {
 
 void LcdDisplay::Unlock() {
     lvgl_port_unlock();
+}
+
+void LcdDisplay::CreateHomePanel(LvglTheme* lvgl_theme) {
+    auto text_font = lvgl_theme->text_font()->font();
+    const bool compact_layout = width_ < 280;
+
+    home_panel_ = lv_obj_create(container_);
+    lv_obj_set_size(home_panel_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(home_panel_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(home_panel_, 0, 0);
+    lv_obj_set_style_pad_all(home_panel_, lvgl_theme->spacing(4), 0);
+    lv_obj_set_style_pad_row(home_panel_, lvgl_theme->spacing(4), 0);
+    lv_obj_set_style_pad_column(home_panel_, lvgl_theme->spacing(4), 0);
+    lv_obj_set_scrollbar_mode(home_panel_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(home_panel_, compact_layout ? LV_FLEX_FLOW_COLUMN : LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(home_panel_, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    home_clock_card_ = lv_obj_create(home_panel_);
+    lv_obj_set_width(home_clock_card_, compact_layout ? LV_PCT(100) : LV_PCT(62));
+    lv_obj_set_flex_grow(home_clock_card_, compact_layout ? 0 : 2);
+    lv_obj_set_height(home_clock_card_, LV_SIZE_CONTENT);
+    lv_obj_set_style_radius(home_clock_card_, lvgl_theme->spacing(6), 0);
+    lv_obj_set_style_border_width(home_clock_card_, 1, 0);
+    lv_obj_set_style_border_color(home_clock_card_, lvgl_theme->border_color(), 0);
+    lv_obj_set_style_bg_opa(home_clock_card_, LV_OPA_20, 0);
+    lv_obj_set_style_bg_color(home_clock_card_, lvgl_theme->background_color(), 0);
+    lv_obj_set_style_pad_all(home_clock_card_, lvgl_theme->spacing(5), 0);
+    lv_obj_set_scrollbar_mode(home_clock_card_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(home_clock_card_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(home_clock_card_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    int clock_size = std::min(width_ * (compact_layout ? 52 : 40) / 100, height_ * 38 / 100);
+    clock_size = std::max(clock_size, 88);
+    home_clock_face_ = lv_obj_create(home_clock_card_);
+    lv_obj_set_size(home_clock_face_, clock_size, clock_size);
+    lv_obj_set_style_radius(home_clock_face_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(home_clock_face_, 2, 0);
+    lv_obj_set_style_border_color(home_clock_face_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_bg_opa(home_clock_face_, LV_OPA_10, 0);
+    lv_obj_set_style_bg_color(home_clock_face_, lvgl_theme->background_color(), 0);
+    lv_obj_set_style_pad_all(home_clock_face_, 0, 0);
+    lv_obj_set_scrollbar_mode(home_clock_face_, LV_SCROLLBAR_MODE_OFF);
+
+    const int center = clock_size / 2;
+    const float outer_radius = (clock_size / 2.0f) - 8.0f;
+    const float inner_radius = outer_radius - 9.0f;
+    for (size_t i = 0; i < 12; ++i) {
+        const float radians = DegreesToRadians(static_cast<float>(i) * 30.0f);
+        const int outer_x = center + static_cast<int>(std::cos(radians) * outer_radius);
+        const int outer_y = center + static_cast<int>(std::sin(radians) * outer_radius);
+        const int inner_x = center + static_cast<int>(std::cos(radians) * inner_radius);
+        const int inner_y = center + static_cast<int>(std::sin(radians) * inner_radius);
+
+        home_clock_tick_points_[i][0] = { ClampCoord(inner_x), ClampCoord(inner_y) };
+        home_clock_tick_points_[i][1] = { ClampCoord(outer_x), ClampCoord(outer_y) };
+
+        home_clock_tick_lines_[i] = lv_line_create(home_clock_face_);
+        lv_obj_set_size(home_clock_tick_lines_[i], clock_size, clock_size);
+        lv_obj_align(home_clock_tick_lines_[i], LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_style_line_width(home_clock_tick_lines_[i], 2, 0);
+        lv_obj_set_style_line_color(home_clock_tick_lines_[i], lvgl_theme->text_color(), 0);
+        lv_obj_set_style_line_rounded(home_clock_tick_lines_[i], true, 0);
+        lv_line_set_points(home_clock_tick_lines_[i], home_clock_tick_points_[i].data(), 2);
+    }
+
+    auto create_hand = [this, clock_size](lv_color_t color, int width) {
+        lv_obj_t* hand = lv_line_create(home_clock_face_);
+        lv_obj_set_size(hand, clock_size, clock_size);
+        lv_obj_align(hand, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_style_line_width(hand, width, 0);
+        lv_obj_set_style_line_color(hand, color, 0);
+        lv_obj_set_style_line_rounded(hand, true, 0);
+        return hand;
+    };
+
+    home_clock_hour_hand_ = create_hand(lvgl_theme->text_color(), 4);
+    home_clock_minute_hand_ = create_hand(lvgl_theme->text_color(), 3);
+    home_clock_second_hand_ = create_hand(lv_color_hex(0xD95C2B), 2);
+
+    home_clock_center_dot_ = lv_obj_create(home_clock_face_);
+    lv_obj_set_size(home_clock_center_dot_, 10, 10);
+    lv_obj_set_style_radius(home_clock_center_dot_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(home_clock_center_dot_, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(home_clock_center_dot_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_border_width(home_clock_center_dot_, 0, 0);
+    lv_obj_align(home_clock_center_dot_, LV_ALIGN_CENTER, 0, 0);
+
+    home_clock_digital_label_ = lv_label_create(home_clock_card_);
+    lv_obj_set_style_text_font(home_clock_digital_label_, text_font, 0);
+    lv_obj_set_style_text_color(home_clock_digital_label_, lvgl_theme->text_color(), 0);
+    lv_label_set_text(home_clock_digital_label_, "--:--:--");
+
+    home_date_label_ = lv_label_create(home_clock_card_);
+    lv_obj_set_style_text_color(home_date_label_, lvgl_theme->text_color(), 0);
+    lv_label_set_text(home_date_label_, "等待校时");
+
+    home_weather_card_ = lv_obj_create(home_panel_);
+    lv_obj_set_width(home_weather_card_, compact_layout ? LV_PCT(100) : LV_PCT(34));
+    lv_obj_set_flex_grow(home_weather_card_, 1);
+    lv_obj_set_height(home_weather_card_, LV_SIZE_CONTENT);
+    lv_obj_set_style_radius(home_weather_card_, lvgl_theme->spacing(6), 0);
+    lv_obj_set_style_border_width(home_weather_card_, 1, 0);
+    lv_obj_set_style_border_color(home_weather_card_, lvgl_theme->border_color(), 0);
+    lv_obj_set_style_bg_opa(home_weather_card_, LV_OPA_20, 0);
+    lv_obj_set_style_bg_color(home_weather_card_, lvgl_theme->background_color(), 0);
+    lv_obj_set_style_pad_all(home_weather_card_, lvgl_theme->spacing(5), 0);
+    lv_obj_set_scrollbar_mode(home_weather_card_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(home_weather_card_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(home_weather_card_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(home_weather_card_, lvgl_theme->spacing(2), 0);
+
+    lv_obj_t* weather_title = lv_label_create(home_weather_card_);
+    lv_obj_set_style_text_color(weather_title, lvgl_theme->text_color(), 0);
+    lv_label_set_text(weather_title, "天气");
+
+    home_weather_location_label_ = lv_label_create(home_weather_card_);
+    lv_obj_set_style_text_color(home_weather_location_label_, lvgl_theme->text_color(), 0);
+
+    home_weather_temperature_label_ = lv_label_create(home_weather_card_);
+    lv_obj_set_style_text_color(home_weather_temperature_label_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_text_font(home_weather_temperature_label_, text_font, 0);
+
+    home_weather_condition_label_ = lv_label_create(home_weather_card_);
+    lv_obj_set_width(home_weather_condition_label_, compact_layout ? LV_PCT(100) : LV_PCT(92));
+    lv_obj_set_style_text_align(home_weather_condition_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(home_weather_condition_label_, lvgl_theme->text_color(), 0);
+    lv_label_set_long_mode(home_weather_condition_label_, LV_LABEL_LONG_WRAP);
+
+    RefreshWeatherDisplay();
+    UpdateHomeClock();
+}
+
+void LcdDisplay::CreateChatPanel(LvglTheme* lvgl_theme) {
+    content_ = lv_obj_create(container_);
+    lv_obj_set_size(content_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_radius(content_, 0, 0);
+    lv_obj_set_style_border_width(content_, 0, 0);
+    lv_obj_set_style_bg_opa(content_, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(content_, lvgl_theme->chat_background_color(), 0);
+    lv_obj_set_style_pad_left(content_, lvgl_theme->spacing(3), 0);
+    lv_obj_set_style_pad_right(content_, lvgl_theme->spacing(3), 0);
+    lv_obj_set_style_pad_top(content_, lvgl_theme->spacing(3), 0);
+    lv_obj_set_style_pad_bottom(content_, lvgl_theme->spacing(3), 0);
+    lv_obj_set_style_pad_row(content_, lvgl_theme->spacing(2), 0);
+    lv_obj_set_scrollbar_mode(content_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(content_, LV_DIR_VER);
+    lv_obj_set_flex_flow(content_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(content_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+}
+
+void LcdDisplay::UpdateActivePanelVisibility() {
+    if (home_panel_ != nullptr) {
+        if (chat_active_) {
+            lv_obj_add_flag(home_panel_, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_remove_flag(home_panel_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (content_ != nullptr) {
+        if (chat_active_) {
+            lv_obj_remove_flag(content_, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(content_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (emoji_box_ != nullptr) {
+        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void LcdDisplay::UpdateHomeClock() {
+    if (home_clock_face_ == nullptr || home_clock_digital_label_ == nullptr || home_date_label_ == nullptr) {
+        return;
+    }
+
+    time_t now = time(nullptr);
+    if (now == 0) {
+        return;
+    }
+    if (last_home_clock_update_ == now) {
+        return;
+    }
+    last_home_clock_update_ = now;
+
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+    if (timeinfo.tm_year < 2025 - 1900) {
+        lv_label_set_text(home_clock_digital_label_, "--:--:--");
+        lv_label_set_text(home_date_label_, "等待校时");
+        return;
+    }
+
+    char digital_time[16];
+    strftime(digital_time, sizeof(digital_time), "%H:%M:%S", &timeinfo);
+    lv_label_set_text(home_clock_digital_label_, digital_time);
+
+    static const char* kWeekDays[] = {
+        "周日", "周一", "周二", "周三", "周四", "周五", "周六"
+    };
+    char date_text[32];
+    snprintf(date_text, sizeof(date_text), "%02d月%02d日 %s",
+        timeinfo.tm_mon + 1,
+        timeinfo.tm_mday,
+        kWeekDays[timeinfo.tm_wday % 7]);
+    lv_label_set_text(home_date_label_, date_text);
+
+    const int clock_size = lv_obj_get_width(home_clock_face_);
+    const int center = clock_size / 2;
+    const float radius = (clock_size / 2.0f) - 14.0f;
+    auto set_hand = [center](std::array<lv_point_precise_t, 2>& points, float degrees, float length_ratio) {
+        const float radians = DegreesToRadians(degrees);
+        points[0] = { ClampCoord(center), ClampCoord(center) };
+        points[1] = {
+            ClampCoord(center + static_cast<int>(std::cos(radians) * length_ratio)),
+            ClampCoord(center + static_cast<int>(std::sin(radians) * length_ratio))
+        };
+    };
+
+    const float hour_angle = ((timeinfo.tm_hour % 12) + timeinfo.tm_min / 60.0f) * 30.0f;
+    const float minute_angle = (timeinfo.tm_min + timeinfo.tm_sec / 60.0f) * 6.0f;
+    const float second_angle = timeinfo.tm_sec * 6.0f;
+
+    set_hand(home_clock_hour_points_, hour_angle, radius * 0.52f);
+    set_hand(home_clock_minute_points_, minute_angle, radius * 0.74f);
+    set_hand(home_clock_second_points_, second_angle, radius * 0.84f);
+
+    lv_line_set_points(home_clock_hour_hand_, home_clock_hour_points_.data(), 2);
+    lv_line_set_points(home_clock_minute_hand_, home_clock_minute_points_.data(), 2);
+    lv_line_set_points(home_clock_second_hand_, home_clock_second_points_.data(), 2);
+}
+
+void LcdDisplay::RefreshWeatherDisplay() {
+    if (home_weather_location_label_ == nullptr || home_weather_temperature_label_ == nullptr ||
+        home_weather_condition_label_ == nullptr) {
+        return;
+    }
+
+    const char* location = weather_location_.empty() ? "本地" : weather_location_.c_str();
+    const char* condition = weather_condition_.empty() ? "天气获取中" : weather_condition_.c_str();
+    const char* temperature = weather_temperature_.empty() ? "--" : weather_temperature_.c_str();
+
+    lv_label_set_text(home_weather_location_label_, location);
+    lv_label_set_text(home_weather_temperature_label_, temperature);
+    lv_label_set_text(home_weather_condition_label_, condition);
+}
+
+void LcdDisplay::AppendChatBubble(const char* role, const char* content, LvglTheme* lvgl_theme) {
+    if (content_ == nullptr || content == nullptr || content[0] == '\0') {
+        return;
+    }
+
+#if CONFIG_IDF_TARGET_ESP32P4
+    constexpr uint32_t kMaxMessages = 40;
+#else
+    constexpr uint32_t kMaxMessages = 20;
+#endif
+
+    uint32_t child_count = lv_obj_get_child_cnt(content_);
+    if (child_count >= kMaxMessages) {
+        lv_obj_t* first_child = lv_obj_get_child(content_, 0);
+        if (first_child != nullptr) {
+            lv_obj_del(first_child);
+        }
+    }
+
+    if (strcmp(role, "system") == 0) {
+        child_count = lv_obj_get_child_cnt(content_);
+        if (child_count > 0) {
+            lv_obj_t* last_row = lv_obj_get_child(content_, child_count - 1);
+            if (last_row != nullptr && lv_obj_get_child_cnt(last_row) > 0) {
+                lv_obj_t* last_bubble = lv_obj_get_child(last_row, 0);
+                void* bubble_type_ptr = last_bubble != nullptr ? lv_obj_get_user_data(last_bubble) : nullptr;
+                if (bubble_type_ptr != nullptr && strcmp(static_cast<const char*>(bubble_type_ptr), "system") == 0) {
+                    lv_obj_del(last_row);
+                }
+            }
+        }
+    }
+
+    lv_obj_t* row = lv_obj_create(content_);
+    lv_obj_set_width(row, LV_PCT(100));
+    lv_obj_set_height(row, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_top(row, 0, 0);
+    lv_obj_set_style_pad_bottom(row, 0, 0);
+    lv_obj_set_style_pad_left(row, 0, 0);
+    lv_obj_set_style_pad_right(row, 0, 0);
+    lv_obj_set_scrollbar_mode(row, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+
+    if (strcmp(role, "user") == 0) {
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    } else if (strcmp(role, "assistant") == 0) {
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    } else {
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    }
+
+    lv_obj_t* msg_bubble = lv_obj_create(row);
+    lv_obj_set_style_radius(msg_bubble, 6, 0);
+    lv_obj_set_scrollbar_mode(msg_bubble, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_border_width(msg_bubble, 0, 0);
+    lv_obj_set_style_pad_left(msg_bubble, lvgl_theme->spacing(2), 0);
+    lv_obj_set_style_pad_right(msg_bubble, lvgl_theme->spacing(2), 0);
+    lv_obj_set_style_pad_top(msg_bubble, lvgl_theme->spacing(1), 0);
+    lv_obj_set_style_pad_bottom(msg_bubble, lvgl_theme->spacing(1), 0);
+    lv_obj_set_style_bg_opa(msg_bubble, LV_OPA_COVER, 0);
+
+    lv_obj_t* msg_text = lv_label_create(msg_bubble);
+    lv_label_set_text(msg_text, content);
+    lv_obj_set_width(msg_text, LV_SIZE_CONTENT);
+    lv_obj_update_layout(msg_text);
+    lv_coord_t text_width = lv_obj_get_width(msg_text);
+    lv_coord_t max_width = width_ * 56 / 100;
+    lv_coord_t min_width = 18;
+    if (text_width < min_width) {
+        text_width = min_width;
+    }
+    if (text_width > max_width) {
+        text_width = max_width;
+    }
+    lv_obj_set_width(msg_text, text_width);
+    lv_label_set_long_mode(msg_text, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(msg_bubble, LV_SIZE_CONTENT);
+
+    if (strcmp(role, "user") == 0) {
+        lv_obj_set_style_bg_color(msg_bubble, lvgl_theme->user_bubble_color(), 0);
+        lv_obj_set_style_text_color(msg_text, lvgl_theme->text_color(), 0);
+        if (lvgl_theme->name() == "light") {
+            lv_obj_set_style_border_width(msg_bubble, 1, 0);
+            lv_obj_set_style_border_color(msg_bubble, lv_color_hex(0xD8D8D8), 0);
+        }
+        lv_obj_set_user_data(msg_bubble, (void*)"user");
+    } else if (strcmp(role, "assistant") == 0) {
+        lv_obj_set_style_bg_color(msg_bubble, lvgl_theme->assistant_bubble_color(), 0);
+        lv_obj_set_style_text_color(msg_text, lvgl_theme->text_color(), 0);
+        lv_obj_set_user_data(msg_bubble, (void*)"assistant");
+    } else {
+        lv_obj_set_style_bg_color(msg_bubble, lvgl_theme->system_bubble_color(), 0);
+        lv_obj_set_style_text_color(msg_text, lvgl_theme->system_text_color(), 0);
+        lv_obj_set_user_data(msg_bubble, (void*)"system");
+    }
+
+    chat_message_label_ = msg_text;
+    lv_obj_scroll_to_view_recursive(row, LV_ANIM_ON);
+}
+
+void LcdDisplay::UpdateStatusBar(bool update_all) {
+    LvglDisplay::UpdateStatusBar(update_all);
+    DisplayLockGuard lock(this);
+    UpdateHomeClock();
 }
 
 #if CONFIG_USE_WECHAT_MESSAGE_STYLE
@@ -813,23 +1188,25 @@ void LcdDisplay::SetupUI() {
     LvglTheme* lvgl_theme = static_cast<LvglTheme*>(current_theme_);
     auto text_font = lvgl_theme->text_font()->font();
     auto icon_font = lvgl_theme->icon_font()->font();
-    auto large_icon_font = lvgl_theme->large_icon_font()->font();
 
     auto screen = lv_screen_active();
     lv_obj_set_style_text_font(screen, text_font, 0);
     lv_obj_set_style_text_color(screen, lvgl_theme->text_color(), 0);
     lv_obj_set_style_bg_color(screen, lvgl_theme->background_color(), 0);
 
-    /* Container - used as background */
+    /* Container - main content area below the status bar */
     container_ = lv_obj_create(screen);
-    lv_obj_set_size(container_, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_size(container_, LV_HOR_RES - lvgl_theme->spacing(4), LV_VER_RES - text_font->line_height - lvgl_theme->spacing(14));
     lv_obj_set_style_radius(container_, 0, 0);
     lv_obj_set_style_pad_all(container_, 0, 0);
     lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_color(container_, lvgl_theme->background_color(), 0);
     lv_obj_set_style_border_color(container_, lvgl_theme->border_color(), 0);
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_align(container_, LV_ALIGN_TOP_MID, 0, text_font->line_height + lvgl_theme->spacing(8));
 
-    /* Bottom layer: emoji_box_ - centered display */
+    /* Hidden emotion layer kept for compatibility with existing state callbacks */
     emoji_box_ = lv_obj_create(screen);
     lv_obj_set_size(emoji_box_, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(emoji_box_, LV_OPA_TRANSP, 0);
@@ -838,15 +1215,16 @@ void LcdDisplay::SetupUI() {
     lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, 0);
 
     emoji_label_ = lv_label_create(emoji_box_);
-    lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
+    lv_obj_set_style_text_font(emoji_label_, lvgl_theme->large_icon_font()->font(), 0);
     lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
     lv_label_set_text(emoji_label_, FONT_AWESOME_MICROCHIP_AI);
 
     emoji_image_ = lv_img_create(emoji_box_);
     lv_obj_center(emoji_image_);
     lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
 
-    /* Middle layer: preview_image_ - centered display */
+    /* Floating image preview stays above home/chat panels */
     preview_image_ = lv_image_create(screen);
     lv_obj_set_size(preview_image_, width_ / 2, height_ / 2);
     lv_obj_align(preview_image_, LV_ALIGN_CENTER, 0, 0);
@@ -924,61 +1302,11 @@ void LcdDisplay::SetupUI() {
     lv_label_set_text(status_label_, Lang::Strings::INITIALIZING);
     lv_obj_align(status_label_, LV_ALIGN_CENTER, 0, 0);
 
-#if CONFIG_USE_MULTILINE_CHAT_MESSAGE
-    /* Bottom bar - auto height, grows upward with wrapped text */
-    bottom_bar_ = lv_obj_create(screen);
-    lv_obj_set_width(bottom_bar_, LV_HOR_RES);
-    lv_obj_set_height(bottom_bar_, LV_SIZE_CONTENT);
-    lv_obj_set_style_radius(bottom_bar_, 0, 0);
-    lv_obj_set_style_bg_color(bottom_bar_, lvgl_theme->background_color(), 0);
-    lv_obj_set_style_bg_opa(bottom_bar_, LV_OPA_50, 0);
-    lv_obj_set_style_text_color(bottom_bar_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_pad_all(bottom_bar_, lvgl_theme->spacing(4), 0);
-    lv_obj_set_style_border_width(bottom_bar_, 0, 0);
-    lv_obj_set_scrollbar_mode(bottom_bar_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_align(bottom_bar_, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-    /* chat_message_label_ placed in bottom_bar_, multiline wrapped display */
-    chat_message_label_ = lv_label_create(bottom_bar_);
-    lv_label_set_text(chat_message_label_, "");
-    lv_obj_set_width(chat_message_label_, LV_HOR_RES - lvgl_theme->spacing(8));
-    lv_label_set_long_mode(chat_message_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(chat_message_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(chat_message_label_, lvgl_theme->text_color(), 0);
-    lv_obj_align(chat_message_label_, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);  // Hide until there is content
-#else
-    /* Top layer: Bottom bar - fixed height at bottom */
-    bottom_bar_ = lv_obj_create(screen);
-    lv_obj_set_size(bottom_bar_, LV_HOR_RES, text_font->line_height + lvgl_theme->spacing(8));
-    lv_obj_set_style_radius(bottom_bar_, 0, 0);
-    lv_obj_set_style_bg_color(bottom_bar_, lvgl_theme->background_color(), 0);
-    lv_obj_set_style_text_color(bottom_bar_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_pad_all(bottom_bar_, 0, 0);
-    lv_obj_set_style_pad_left(bottom_bar_, lvgl_theme->spacing(4), 0);
-    lv_obj_set_style_pad_right(bottom_bar_, lvgl_theme->spacing(4), 0);
-    lv_obj_set_style_border_width(bottom_bar_, 0, 0);
-    lv_obj_set_scrollbar_mode(bottom_bar_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_align(bottom_bar_, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-    /* chat_message_label_ placed in bottom_bar_, single-line horizontal scroll */
-    chat_message_label_ = lv_label_create(bottom_bar_);
-    lv_label_set_text(chat_message_label_, "");
-    lv_obj_set_width(chat_message_label_, LV_HOR_RES - lvgl_theme->spacing(8));
-    lv_label_set_long_mode(chat_message_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_align(chat_message_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(chat_message_label_, lvgl_theme->text_color(), 0);
-    lv_obj_align(chat_message_label_, LV_ALIGN_CENTER, 0, 0);
-
-    // Start scrolling after a delay (short text won't scroll)
-    static lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_delay(&a, 1000);
-    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-    lv_obj_set_style_anim(chat_message_label_, &a, LV_PART_MAIN);
-    lv_obj_set_style_anim_duration(chat_message_label_, lv_anim_speed_clamped(60, 300, 60000), LV_PART_MAIN);
-    lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);  // Hide until there is content
-#endif
+    CreateHomePanel(lvgl_theme);
+    CreateChatPanel(lvgl_theme);
+    chat_message_label_ = nullptr;
+    chat_active_ = false;
+    UpdateActivePanelVisibility();
 
     low_battery_popup_ = lv_obj_create(screen);
     lv_obj_set_scrollbar_mode(low_battery_popup_, LV_SCROLLBAR_MODE_OFF);
@@ -1003,7 +1331,9 @@ void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
 
     if (image == nullptr) {
         esp_timer_stop(preview_timer_);
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+        if (emoji_box_ != nullptr) {
+            lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+        }
         lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
         preview_image_cached_.reset();
         if (gif_controller_) {
@@ -1012,6 +1342,8 @@ void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
         return;
     }
 
+    chat_active_ = true;
+    UpdateActivePanelVisibility();
     preview_image_cached_ = std::move(image);
     auto img_dsc = preview_image_cached_->image_dsc();
     lv_image_set_src(preview_image_, img_dsc);
@@ -1035,39 +1367,47 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
         ESP_LOGW(TAG, "SetChatMessage('%s', '%s') called before SetupUI() - message will be lost!", role, content);
     }
     DisplayLockGuard lock(this);
-    if (chat_message_label_ == nullptr) {
+    if (content_ == nullptr) {
         if (setup_ui_called_) {
-            ESP_LOGW(TAG, "SetChatMessage('%s', '%s') failed: chat_message_label_ is nullptr (SetupUI() was called but label not created)", role, content);
+            ESP_LOGW(TAG, "SetChatMessage('%s', '%s') failed: content_ is nullptr (SetupUI() was called but container not created)", role, content);
         }
         return;
     }
-    lv_label_set_text(chat_message_label_, content);
-    // Show bottom_bar_ only when there is content (and subtitle is not globally hidden)
-    if (bottom_bar_ != nullptr) {
-        if (content == nullptr || content[0] == '\0') {
-            lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
-        } else if (!hide_subtitle_) {
-            lv_obj_remove_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
-        }
+
+    if (content == nullptr || content[0] == '\0') {
+        return;
     }
-#if CONFIG_USE_MULTILINE_CHAT_MESSAGE
-    // Re-align bottom_bar_ after text change so it stays anchored to the bottom
-    // as its height adapts to the wrapped content.
-    if (bottom_bar_ != nullptr) {
-        lv_obj_align(bottom_bar_, LV_ALIGN_BOTTOM_MID, 0, 0);
-    }
-#endif
+
+    chat_active_ = true;
+    UpdateActivePanelVisibility();
+    AppendChatBubble(role, content, static_cast<LvglTheme*>(current_theme_));
 }
 
 void LcdDisplay::ClearChatMessages() {
     DisplayLockGuard lock(this);
-    // In non-wechat mode, just clear the chat message label and hide the bar
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, "");
+    if (content_ != nullptr) {
+        lv_obj_clean(content_);
     }
-    if (bottom_bar_ != nullptr) {
-        lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
+    chat_message_label_ = nullptr;
+}
+
+void LcdDisplay::SetChatActive(bool active) {
+    DisplayLockGuard lock(this);
+    chat_active_ = active;
+    if (!active && preview_image_ != nullptr) {
+        esp_timer_stop(preview_timer_);
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+        preview_image_cached_.reset();
     }
+    UpdateActivePanelVisibility();
+}
+
+void LcdDisplay::SetWeather(const char* condition, const char* temperature, const char* location) {
+    DisplayLockGuard lock(this);
+    weather_condition_ = (condition != nullptr && condition[0] != '\0') ? condition : "天气获取中";
+    weather_temperature_ = FormatWeatherTemperature(temperature);
+    weather_location_ = (location != nullptr && location[0] != '\0') ? location : "本地";
+    RefreshWeatherDisplay();
 }
 #endif
 
@@ -1270,19 +1610,81 @@ void LcdDisplay::SetTheme(Theme* theme) {
         }
     }
 #else
-    // Simple UI mode - just update the main chat message
-    if (chat_message_label_ != nullptr) {
-        lv_obj_set_style_text_color(chat_message_label_, lvgl_theme->text_color(), 0);
-    }
-    
     if (emoji_label_ != nullptr) {
         lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
     }
-    
-    // Update bottom bar background color with 50% opacity
-    if (bottom_bar_ != nullptr) {
-        lv_obj_set_style_bg_opa(bottom_bar_, LV_OPA_50, 0);
-        lv_obj_set_style_bg_color(bottom_bar_, lvgl_theme->background_color(), 0);
+
+    if (content_ != nullptr) {
+        lv_obj_set_style_bg_color(content_, lvgl_theme->chat_background_color(), 0);
+    }
+    if (home_clock_card_ != nullptr) {
+        lv_obj_set_style_border_color(home_clock_card_, lvgl_theme->border_color(), 0);
+        lv_obj_set_style_bg_color(home_clock_card_, lvgl_theme->background_color(), 0);
+    }
+    if (home_weather_card_ != nullptr) {
+        lv_obj_set_style_border_color(home_weather_card_, lvgl_theme->border_color(), 0);
+        lv_obj_set_style_bg_color(home_weather_card_, lvgl_theme->background_color(), 0);
+    }
+    if (home_clock_face_ != nullptr) {
+        lv_obj_set_style_border_color(home_clock_face_, lvgl_theme->text_color(), 0);
+        lv_obj_set_style_bg_color(home_clock_face_, lvgl_theme->background_color(), 0);
+    }
+    if (home_clock_center_dot_ != nullptr) {
+        lv_obj_set_style_bg_color(home_clock_center_dot_, lvgl_theme->text_color(), 0);
+    }
+    for (auto* tick_line : home_clock_tick_lines_) {
+        if (tick_line != nullptr) {
+            lv_obj_set_style_line_color(tick_line, lvgl_theme->text_color(), 0);
+        }
+    }
+    if (home_clock_hour_hand_ != nullptr) {
+        lv_obj_set_style_line_color(home_clock_hour_hand_, lvgl_theme->text_color(), 0);
+    }
+    if (home_clock_minute_hand_ != nullptr) {
+        lv_obj_set_style_line_color(home_clock_minute_hand_, lvgl_theme->text_color(), 0);
+    }
+    if (home_clock_digital_label_ != nullptr) {
+        lv_obj_set_style_text_color(home_clock_digital_label_, lvgl_theme->text_color(), 0);
+    }
+    if (home_date_label_ != nullptr) {
+        lv_obj_set_style_text_color(home_date_label_, lvgl_theme->text_color(), 0);
+    }
+    if (home_weather_location_label_ != nullptr) {
+        lv_obj_set_style_text_color(home_weather_location_label_, lvgl_theme->text_color(), 0);
+    }
+    if (home_weather_temperature_label_ != nullptr) {
+        lv_obj_set_style_text_color(home_weather_temperature_label_, lvgl_theme->text_color(), 0);
+    }
+    if (home_weather_condition_label_ != nullptr) {
+        lv_obj_set_style_text_color(home_weather_condition_label_, lvgl_theme->text_color(), 0);
+    }
+
+    if (content_ != nullptr) {
+        const uint32_t child_count = lv_obj_get_child_cnt(content_);
+        for (uint32_t i = 0; i < child_count; ++i) {
+            lv_obj_t* row = lv_obj_get_child(content_, i);
+            if (row == nullptr || lv_obj_get_child_cnt(row) == 0) {
+                continue;
+            }
+            lv_obj_t* bubble = lv_obj_get_child(row, 0);
+            void* bubble_type_ptr = bubble != nullptr ? lv_obj_get_user_data(bubble) : nullptr;
+            if (bubble == nullptr || bubble_type_ptr == nullptr) {
+                continue;
+            }
+            const char* bubble_type = static_cast<const char*>(bubble_type_ptr);
+            if (strcmp(bubble_type, "user") == 0) {
+                lv_obj_set_style_bg_color(bubble, lvgl_theme->user_bubble_color(), 0);
+            } else if (strcmp(bubble_type, "assistant") == 0) {
+                lv_obj_set_style_bg_color(bubble, lvgl_theme->assistant_bubble_color(), 0);
+            } else {
+                lv_obj_set_style_bg_color(bubble, lvgl_theme->system_bubble_color(), 0);
+            }
+            if (lv_obj_get_child_cnt(bubble) > 0) {
+                lv_obj_t* text = lv_obj_get_child(bubble, 0);
+                lv_obj_set_style_text_color(text,
+                    strcmp(bubble_type, "system") == 0 ? lvgl_theme->system_text_color() : lvgl_theme->text_color(), 0);
+            }
+        }
     }
 #endif
     

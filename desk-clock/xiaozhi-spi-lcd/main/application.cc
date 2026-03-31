@@ -594,6 +594,51 @@ void Application::InitializeProtocol() {
             auto payload = cJSON_GetObjectItem(root, "payload");
             ESP_LOGI(TAG, "Received custom message: %s", cJSON_PrintUnformatted(root));
             if (cJSON_IsObject(payload)) {
+                auto item_to_string = [](const cJSON* item) -> std::string {
+                    if (cJSON_IsString(item) && item->valuestring != nullptr) {
+                        return item->valuestring;
+                    }
+                    if (cJSON_IsNumber(item)) {
+                        char buffer[32];
+                        snprintf(buffer, sizeof(buffer), "%g", item->valuedouble);
+                        return buffer;
+                    }
+                    return {};
+                };
+
+                const cJSON* weather = cJSON_GetObjectItem(payload, "weather");
+                const cJSON* location = nullptr;
+                const cJSON* condition = nullptr;
+                const cJSON* temperature = nullptr;
+                if (cJSON_IsObject(weather)) {
+                    location = cJSON_GetObjectItem(weather, "location");
+                    condition = cJSON_GetObjectItem(weather, "condition");
+                    if (!cJSON_IsString(condition)) {
+                        condition = cJSON_GetObjectItem(weather, "text");
+                    }
+                    temperature = cJSON_GetObjectItem(weather, "temperature");
+                    if (!cJSON_IsString(temperature) && !cJSON_IsNumber(temperature)) {
+                        temperature = cJSON_GetObjectItem(weather, "temp");
+                    }
+                } else {
+                    location = cJSON_GetObjectItem(payload, "weather_location");
+                    condition = cJSON_GetObjectItem(payload, "weather_condition");
+                    temperature = cJSON_GetObjectItem(payload, "weather_temperature");
+                }
+
+                std::string location_str = item_to_string(location);
+                std::string condition_str = item_to_string(condition);
+                std::string temperature_str = item_to_string(temperature);
+                if (!location_str.empty() || !condition_str.empty() || !temperature_str.empty()) {
+                    Schedule([display,
+                             location = std::move(location_str),
+                             condition = std::move(condition_str),
+                             temperature = std::move(temperature_str)]() {
+                        display->SetWeather(condition.c_str(), temperature.c_str(), location.c_str());
+                    });
+                    return;
+                }
+
                 Schedule([this, display, payload_str = std::string(cJSON_PrintUnformatted(payload))]() {
                     display->SetChatMessage("system", payload_str.c_str());
                 });
@@ -866,17 +911,20 @@ void Application::HandleStateChangedEvent() {
         case kDeviceStateIdle:
             display->SetStatus(Lang::Strings::STANDBY);
             display->ClearChatMessages();  // Clear messages first
+            display->SetChatActive(false);
             display->SetEmotion("neutral"); // Then set emotion (wechat mode checks child count)
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
             break;
         case kDeviceStateConnecting:
             display->SetStatus(Lang::Strings::CONNECTING);
+            display->SetChatActive(true);
             display->SetEmotion("neutral");
             display->SetChatMessage("system", "");
             break;
         case kDeviceStateListening:
             display->SetStatus(Lang::Strings::LISTENING);
+            display->SetChatActive(true);
             display->SetEmotion("neutral");
 
             // Make sure the audio processor is running
@@ -908,6 +956,7 @@ void Application::HandleStateChangedEvent() {
             break;
         case kDeviceStateSpeaking:
             display->SetStatus(Lang::Strings::SPEAKING);
+            display->SetChatActive(true);
 
             if (listening_mode_ != kListeningModeRealtime) {
                 audio_service_.EnableVoiceProcessing(false);
