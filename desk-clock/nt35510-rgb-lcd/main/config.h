@@ -93,6 +93,7 @@
 #define BUTTON_TIME_ACTIVE_LEVEL        0
 #define BUTTON_TIME_POLL_MS             10
 #define BUTTON_TIME_DEBOUNCE_MS         40
+#define BUTTON_WIFI_RECONFIG_HOLD_MS    5000
 
 /* ================================================================
  * Sensor / DHT11
@@ -109,13 +110,17 @@
 #define WIFI_PASS_MAX_LEN       64
 #define WIFI_MAX_RETRY          10
 #define WIFI_RECONNECT_DELAY_MS 3000
+#define WIFI_CONNECT_TIMEOUT_MS 60000
 #define WIFI_NVS_NS             "wifi_cfg"
+#define WIFI_PROV_AP_SSID_PREFIX "DeskClock"
+#define WIFI_PROV_AP_CHANNEL    6
+#define WIFI_PROV_AP_IP         "192.168.4.1"
 
 #ifndef CONFIG_WIFI_SSID_DEFAULT
-#define CONFIG_WIFI_SSID_DEFAULT    "haoge"
+#define CONFIG_WIFI_SSID_DEFAULT    ""
 #endif
 #ifndef CONFIG_WIFI_PASS_DEFAULT
-#define CONFIG_WIFI_PASS_DEFAULT    "19901118"
+#define CONFIG_WIFI_PASS_DEFAULT    ""
 #endif
 
 /* ================================================================

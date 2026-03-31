@@ -144,10 +144,10 @@ void app_main(void)
         ESP_LOGE(TAG_MAIN, "WiFi init failed: %s", esp_err_to_name(ret));
     }
 
+    ESP_ERROR_CHECK(web_dashboard_init());
     ESP_ERROR_CHECK(weather_client_init());
     ESP_ERROR_CHECK(dht11_sensor_init());
     ESP_ERROR_CHECK(env_history_init());
-    ESP_ERROR_CHECK(web_dashboard_init());
 
     ret = ui_renderer_init();
     if (ret != ESP_OK) {
@@ -185,10 +185,12 @@ void app_main(void)
         TASK_STACK_HISTORY, NULL,
         TASK_PRIO_HISTORY, NULL, 0);
 
-    xTaskCreatePinnedToCore(
-        web_dashboard_task, "web",
-        TASK_STACK_WEB, NULL,
-        TASK_PRIO_WEB, NULL, 0);
+    if (xTaskCreatePinnedToCore(
+            web_dashboard_task, "web",
+            TASK_STACK_WEB, NULL,
+            TASK_PRIO_WEB, NULL, 0) != pdPASS) {
+        ESP_LOGW(TAG_MAIN, "Web monitor task create failed; HTTP server is already running");
+    }
 
     start_ui_task_or_halt();
 

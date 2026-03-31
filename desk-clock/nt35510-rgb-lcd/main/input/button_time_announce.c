@@ -13,6 +13,7 @@
 #include "config.h"
 #include "net/ntp_client.h"
 #include "net/weather_client.h"
+#include "net/wifi_manager.h"
 
 static bool button_pressed(int level)
 {
@@ -39,6 +40,8 @@ void button_time_announce_task(void *arg)
     int raw_level = gpio_get_level(BUTTON_TIME_ANNOUNCE_PIN);
     int stable_level = raw_level;
     TickType_t last_change_tick = xTaskGetTickCount();
+    TickType_t press_start_tick = 0;
+    bool long_press_handled = false;
 
     ESP_LOGI(TAG_MAIN, "Button time announce task started on GPIO %d", BUTTON_TIME_ANNOUNCE_PIN);
 
@@ -52,6 +55,9 @@ void button_time_announce_task(void *arg)
         } else if (stable_level != raw_level && (now_tick - last_change_tick) >= debounce_ticks) {
             stable_level = raw_level;
             if (button_pressed(stable_level)) {
+                press_start_tick = now_tick;
+                long_press_handled = false;
+            } else if (!long_press_handled) {
                 if (!ntp_client_is_synced()) {
                     ESP_LOGW(TAG_AUDIO, "Button press ignored because time is not synced yet");
                 } else {
@@ -74,6 +80,17 @@ void button_time_announce_task(void *arg)
                     }
                 }
             }
+        }
+
+        if (button_pressed(stable_level) && !long_press_handled &&
+            press_start_tick != 0 &&
+            (now_tick - press_start_tick) >= pdMS_TO_TICKS(BUTTON_WIFI_RECONFIG_HOLD_MS)) {
+            ESP_LOGW(TAG_WIFI, "Button held for %d ms, clearing WiFi credentials",
+                     BUTTON_WIFI_RECONFIG_HOLD_MS);
+            if (wifi_manager_reset_credentials_and_start_provisioning() != ESP_OK) {
+                ESP_LOGE(TAG_WIFI, "Failed to reset WiFi credentials from button");
+            }
+            long_press_handled = true;
         }
 
         vTaskDelay(poll_ticks);

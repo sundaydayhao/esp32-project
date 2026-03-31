@@ -29,6 +29,8 @@ LV_FONT_DECLARE(ui_font_noto_sc_16);
 #define UI_CLOCK_UPDATE_MS 1000
 #define UI_WEATHER_UPDATE_MS 30000
 #define UI_FLUSH_TIMEOUT_MS 1000
+#define UI_STATUS_WRAP_WIDTH 320
+#define UI_STATUS_LABEL_WIDTH (UI_STATUS_WRAP_WIDTH - 30)
 #define UI_PI 3.14159265358979323846f
 #define UI_DEGREE_SYMBOL "\xC2\xB0"
 
@@ -838,7 +840,7 @@ static void create_ui(void)
     lv_obj_set_style_pad_ver(status_bar, 8, 0);
 
     lv_obj_t *wifi_wrap = lv_obj_create(status_bar);
-    lv_obj_set_size(wifi_wrap, 210, 20);
+    lv_obj_set_size(wifi_wrap, UI_STATUS_WRAP_WIDTH, 20);
     lv_obj_align(wifi_wrap, LV_ALIGN_LEFT_MID, 0, 0);
     style_transparent_obj(wifi_wrap);
 
@@ -857,7 +859,7 @@ static void create_ui(void)
     }
 
     s_ui.status_label = lv_label_create(wifi_wrap);
-    lv_obj_set_size(s_ui.status_label, 178, LV_SIZE_CONTENT);
+    lv_obj_set_size(s_ui.status_label, UI_STATUS_LABEL_WIDTH, LV_SIZE_CONTENT);
     lv_obj_set_style_text_font(s_ui.status_label, &ui_font_noto_sc_16, 0);
     lv_obj_set_style_text_color(s_ui.status_label, lv_color_hex(0xB9C7D8), 0);
     lv_obj_set_pos(s_ui.status_label, 30, 0);
@@ -1045,13 +1047,24 @@ static void create_ui(void)
 static void update_status_text(void)
 {
     bool connected = wifi_manager_is_connected();
+    bool config_mode = wifi_manager_is_config_mode();
     char status_text[sizeof(s_ui.status_text)];
     char ip[20] = "0.0.0.0";
+    char ap_ssid[33] = "";
 
     wifi_manager_get_ip(ip, sizeof(ip));
+    wifi_manager_get_ap_ssid(ap_ssid, sizeof(ap_ssid));
 
     if (connected && strcmp(ip, "0.0.0.0") != 0) {
         snprintf(status_text, sizeof(status_text), "IP %s", ip);
+    } else if (config_mode) {
+        if (ap_ssid[0] != '\0') {
+            snprintf(status_text, sizeof(status_text), "AP %s %s", ap_ssid, WIFI_PROV_AP_IP);
+        } else {
+            snprintf(status_text, sizeof(status_text), "AP %s", WIFI_PROV_AP_IP);
+        }
+    } else if (wifi_manager_get_state() == WIFI_STATE_CONNECTING) {
+        strlcpy(status_text, "WiFi connecting", sizeof(status_text));
     } else {
         strlcpy(status_text, "WiFi", sizeof(status_text));
     }
