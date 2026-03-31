@@ -178,7 +178,7 @@
 #define TASK_STACK_CHIME        (6  * 1024)
 #define TASK_STACK_BUTTON       (4  * 1024)
 #define TASK_STACK_DHT11        (4  * 1024)
-#define TASK_STACK_HISTORY      (4  * 1024)
+#define TASK_STACK_HISTORY      (6  * 1024)
 #define TASK_STACK_WEB          (8  * 1024)
 #define TASK_PRIO_LCD_DIAG      3
 #define TASK_PRIO_UI            7

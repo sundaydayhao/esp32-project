@@ -210,21 +210,6 @@ function Write-WavFile {
     }
 }
 
-function Join-WavFiles {
-    param(
-        [string]$LeftPath,
-        [string]$RightPath,
-        [string]$OutputPath
-    )
-
-    $left = Trim-WavDataBytes -PcmData (Get-WavDataBytes -Path $LeftPath)
-    $right = Trim-WavDataBytes -PcmData (Get-WavDataBytes -Path $RightPath)
-    $joined = New-Object byte[] ($left.Length + $right.Length)
-    [Array]::Copy($left, 0, $joined, 0, $left.Length)
-    [Array]::Copy($right, 0, $joined, $left.Length, $right.Length)
-    Write-WavFile -Path $OutputPath -PcmData $joined
-}
-
 $resolvedOutputDir = (Resolve-Path -LiteralPath $OutputDir).Path
 $tempScript = Join-Path $env:TEMP "codex_generate_tts_assets.vbs"
 
@@ -232,17 +217,28 @@ New-SapiVbs -Path $tempScript
 
 $assets = [ordered]@{
     "prefix_beijing_time.wav" = ([string][char]0x5317) + ([string][char]0x4EAC) + ([string][char]0x65F6) + ([string][char]0x95F4)
-    "suffix_oclock.wav" = [string][char]0x70B9
-    "suffix_exact_hour.wav" = ([string][char]0x70B9) + ([string][char]0x6574)
-    "suffix_minute.wav" = [string][char]0x5206
+    "suffix_point.wav" = [string][char]0x70B9
+    "suffix_exact.wav" = [string][char]0x6574
+    "phrase_today_weather.wav" = ([string][char]0x4ECA) + ([string][char]0x5929) + ([string][char]0x5929) + ([string][char]0x6C14)
+    "phrase_current_temperature.wav" = ([string][char]0x5F53) + ([string][char]0x524D) + ([string][char]0x6C14) + ([string][char]0x6E29)
+    "phrase_weather_not_ready.wav" = ([string][char]0x5929) + ([string][char]0x6C14) + ([string][char]0x6570) + ([string][char]0x636E) + ([string][char]0x672A) + ([string][char]0x66F4) + ([string][char]0x65B0)
+    "conjunction_to.wav" = [string][char]0x5230
+    "suffix_degree.wav" = [string][char]0x5EA6
+    "prefix_below_zero.wav" = ([string][char]0x96F6) + ([string][char]0x4E0B)
+    "weather_sunny.wav" = [string][char]0x6674
+    "weather_cloudy.wav" = ([string][char]0x591A) + ([string][char]0x4E91)
+    "weather_overcast.wav" = [string][char]0x9634
+    "weather_rain_snow.wav" = ([string][char]0x96E8) + ([string][char]0x96EA)
+    "weather_thunder_rain.wav" = ([string][char]0x96F7) + ([string][char]0x96E8)
+    "weather_rain.wav" = ([string][char]0x6709) + ([string][char]0x96E8)
+    "weather_snow.wav" = ([string][char]0x6709) + ([string][char]0x96EA)
+    "weather_sand_dust.wav" = ([string][char]0x6C99) + ([string][char]0x5C18)
+    "weather_haze.wav" = ([string][char]0x96FE) + ([string][char]0x973E)
+    "weather_unknown.wav" = ([string][char]0x672A) + ([string][char]0x77E5)
 }
 
-for ($hour = 0; $hour -lt 24; $hour++) {
-    $assets[("hour_{0:D2}.wav" -f $hour)] = Get-ChineseNumber -Value $hour
-}
-
-for ($minute = 0; $minute -lt 60; $minute++) {
-    $assets[("minute_{0:D2}.wav" -f $minute)] = Get-ChineseNumber -Value $minute -Minute
+for ($number = 0; $number -le 10; $number++) {
+    $assets[("number_{0:D2}.wav" -f $number)] = Get-ChineseNumber -Value $number
 }
 
 foreach ($entry in $assets.GetEnumerator()) {
@@ -259,22 +255,4 @@ foreach ($entry in $assets.GetEnumerator()) {
     }
 
     Write-Host ("generated {0}" -f $entry.Key)
-}
-
-for ($minute = 11; $minute -lt 60; $minute++) {
-    if (($minute % 10) -eq 0) {
-        continue
-    }
-
-    $tensValue = [int][Math]::Floor($minute / 10) * 10
-    $onesValue = $minute % 10
-    $minuteName = "minute_{0:D2}.wav" -f $minute
-    $tensName = "minute_{0:D2}.wav" -f $tensValue
-    $onesName = "hour_{0:D2}.wav" -f $onesValue
-
-    Join-WavFiles `
-        -LeftPath (Join-Path $resolvedOutputDir $tensName) `
-        -RightPath (Join-Path $resolvedOutputDir $onesName) `
-        -OutputPath (Join-Path $resolvedOutputDir $minuteName)
-    Write-Host ("patched {0}" -f $minuteName)
 }

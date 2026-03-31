@@ -12,6 +12,7 @@
 #include "audio/audio_output.h"
 #include "config.h"
 #include "net/ntp_client.h"
+#include "net/weather_client.h"
 
 static bool button_pressed(int level)
 {
@@ -55,6 +56,7 @@ void button_time_announce_task(void *arg)
                     ESP_LOGW(TAG_AUDIO, "Button press ignored because time is not synced yet");
                 } else {
                     struct tm now = {0};
+                    weather_data_t weather = {0};
                     esp_err_t ret;
 
                     ntp_client_get_local_time(&now);
@@ -62,6 +64,13 @@ void button_time_announce_task(void *arg)
                     ret = audio_output_play_beijing_time_announcement(now.tm_hour, now.tm_min);
                     if (ret != ESP_OK) {
                         ESP_LOGW(TAG_AUDIO, "Button time announcement failed: %s", esp_err_to_name(ret));
+                    } else {
+                        weather_client_get_data(&weather);
+                        ESP_LOGI(TAG_AUDIO, "Button pressed, announcing weather");
+                        ret = audio_output_play_weather_announcement(&weather);
+                        if (ret != ESP_OK) {
+                            ESP_LOGW(TAG_AUDIO, "Button weather announcement failed: %s", esp_err_to_name(ret));
+                        }
                     }
                 }
             }

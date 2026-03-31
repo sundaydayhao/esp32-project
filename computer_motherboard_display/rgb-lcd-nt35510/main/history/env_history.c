@@ -4,6 +4,7 @@
  */
 #include "history/env_history.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -32,34 +33,51 @@ typedef struct {
     env_history_point_t points[ENV_HISTORY_CAPACITY];
 } env_history_blob_t;
 
+static env_history_blob_t *env_history_alloc_blob(void)
+{
+    env_history_blob_t *blob = calloc(1, sizeof(*blob));
+    if (!blob) {
+        ESP_LOGE(TAG_HISTORY, "Failed to allocate history snapshot buffer (%u bytes)",
+                 (unsigned)sizeof(*blob));
+        return NULL;
+    }
+
+    blob->version = ENV_HISTORY_BLOB_VERSION;
+    return blob;
+}
+
 static esp_err_t env_history_save_snapshot(void)
 {
-    env_history_blob_t blob = {
-        .version = ENV_HISTORY_BLOB_VERSION,
-    };
-
     if (s_nvs == 0) {
         return ESP_ERR_INVALID_STATE;
     }
 
+    env_history_blob_t *blob = env_history_alloc_blob();
+    if (!blob) {
+        return ESP_ERR_NO_MEM;
+    }
+
     portENTER_CRITICAL(&s_lock);
-    blob.count = (uint32_t)s_count;
-    blob.head = (uint32_t)s_head;
-    memcpy(blob.points, s_points, sizeof(s_points));
+    blob->count = (uint32_t)s_count;
+    blob->head = (uint32_t)s_head;
+    memcpy(blob->points, s_points, sizeof(s_points));
     portEXIT_CRITICAL(&s_lock);
 
-    esp_err_t ret = nvs_set_blob(s_nvs, NVS_KEY_ENV_HISTORY, &blob, sizeof(blob));
+    esp_err_t ret = nvs_set_blob(s_nvs, NVS_KEY_ENV_HISTORY, blob, sizeof(*blob));
     if (ret != ESP_OK) {
         ESP_LOGE(TAG_HISTORY, "Failed to save history blob: %s", esp_err_to_name(ret));
+        free(blob);
         return ret;
     }
 
     ret = nvs_commit(s_nvs);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG_HISTORY, "Failed to commit history blob: %s", esp_err_to_name(ret));
+        free(blob);
         return ret;
     }
 
+    free(blob);
     return ESP_OK;
 }
 
@@ -72,36 +90,42 @@ static void env_history_reset_locked(void)
 
 static esp_err_t env_history_load_snapshot(void)
 {
-    env_history_blob_t blob = {0};
-    size_t blob_size = sizeof(blob);
-    esp_err_t ret = ESP_OK;
-
     if (s_nvs == 0) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    ret = nvs_get_blob(s_nvs, NVS_KEY_ENV_HISTORY, &blob, &blob_size);
+    env_history_blob_t *blob = env_history_alloc_blob();
+    if (!blob) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    size_t blob_size = sizeof(*blob);
+    esp_err_t ret = nvs_get_blob(s_nvs, NVS_KEY_ENV_HISTORY, blob, &blob_size);
     if (ret == ESP_ERR_NVS_NOT_FOUND) {
+        free(blob);
         return ESP_ERR_NOT_FOUND;
     }
     if (ret != ESP_OK) {
         ESP_LOGW(TAG_HISTORY, "Failed to load history blob: %s", esp_err_to_name(ret));
+        free(blob);
         return ret;
     }
-    if (blob_size != sizeof(blob) || blob.version != ENV_HISTORY_BLOB_VERSION ||
-        blob.count > ENV_HISTORY_CAPACITY || blob.head >= ENV_HISTORY_CAPACITY) {
+    if (blob_size != sizeof(*blob) || blob->version != ENV_HISTORY_BLOB_VERSION ||
+        blob->count > ENV_HISTORY_CAPACITY || blob->head >= ENV_HISTORY_CAPACITY) {
         ESP_LOGW(TAG_HISTORY, "History blob is invalid, clearing persisted data");
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_erase_key(s_nvs, NVS_KEY_ENV_HISTORY));
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_commit(s_nvs));
+        free(blob);
         return ESP_ERR_INVALID_SIZE;
     }
 
     portENTER_CRITICAL(&s_lock);
-    memcpy(s_points, blob.points, sizeof(s_points));
-    s_count = blob.count;
-    s_head = blob.head;
+    memcpy(s_points, blob->points, sizeof(s_points));
+    s_count = blob->count;
+    s_head = blob->head;
     portEXIT_CRITICAL(&s_lock);
 
+    free(blob);
     return ESP_OK;
 }
 

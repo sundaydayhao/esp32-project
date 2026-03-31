@@ -1,6 +1,7 @@
 #include "audio_output.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -11,6 +12,7 @@
 #include "freertos/semphr.h"
 
 #include "config.h"
+#include "net/weather_client.h"
 
 #define AUDIO_DMA_DESC_NUM          6
 #define AUDIO_DMA_FRAME_NUM         240
@@ -33,93 +35,18 @@ typedef struct {
     const uint8_t *end;
 } wav_asset_t;
 
-#define HOUR_ASSET_LIST(X) \
-    X(hour_00) \
-    X(hour_01) \
-    X(hour_02) \
-    X(hour_03) \
-    X(hour_04) \
-    X(hour_05) \
-    X(hour_06) \
-    X(hour_07) \
-    X(hour_08) \
-    X(hour_09) \
-    X(hour_10) \
-    X(hour_11) \
-    X(hour_12) \
-    X(hour_13) \
-    X(hour_14) \
-    X(hour_15) \
-    X(hour_16) \
-    X(hour_17) \
-    X(hour_18) \
-    X(hour_19) \
-    X(hour_20) \
-    X(hour_21) \
-    X(hour_22) \
-    X(hour_23)
-
-#define MINUTE_ASSET_LIST(X) \
-    X(minute_00) \
-    X(minute_01) \
-    X(minute_02) \
-    X(minute_03) \
-    X(minute_04) \
-    X(minute_05) \
-    X(minute_06) \
-    X(minute_07) \
-    X(minute_08) \
-    X(minute_09) \
-    X(minute_10) \
-    X(minute_11) \
-    X(minute_12) \
-    X(minute_13) \
-    X(minute_14) \
-    X(minute_15) \
-    X(minute_16) \
-    X(minute_17) \
-    X(minute_18) \
-    X(minute_19) \
-    X(minute_20) \
-    X(minute_21) \
-    X(minute_22) \
-    X(minute_23) \
-    X(minute_24) \
-    X(minute_25) \
-    X(minute_26) \
-    X(minute_27) \
-    X(minute_28) \
-    X(minute_29) \
-    X(minute_30) \
-    X(minute_31) \
-    X(minute_32) \
-    X(minute_33) \
-    X(minute_34) \
-    X(minute_35) \
-    X(minute_36) \
-    X(minute_37) \
-    X(minute_38) \
-    X(minute_39) \
-    X(minute_40) \
-    X(minute_41) \
-    X(minute_42) \
-    X(minute_43) \
-    X(minute_44) \
-    X(minute_45) \
-    X(minute_46) \
-    X(minute_47) \
-    X(minute_48) \
-    X(minute_49) \
-    X(minute_50) \
-    X(minute_51) \
-    X(minute_52) \
-    X(minute_53) \
-    X(minute_54) \
-    X(minute_55) \
-    X(minute_56) \
-    X(minute_57) \
-    X(minute_58) \
-    X(minute_59)
+#define NUMBER_TOKEN_ASSET_LIST(X) \
+    X(number_00) \
+    X(number_01) \
+    X(number_02) \
+    X(number_03) \
+    X(number_04) \
+    X(number_05) \
+    X(number_06) \
+    X(number_07) \
+    X(number_08) \
+    X(number_09) \
+    X(number_10)
 
 #define DECLARE_WAV_ASSET(name) \
     extern const uint8_t name##_wav_start[] asm("_binary_" #name "_wav_start"); \
@@ -129,18 +56,54 @@ typedef struct {
 #define WAV_ASSET_ENTRY(name) { name##_wav_start, name##_wav_end },
 
 DECLARE_WAV_ASSET(prefix_beijing_time)
-DECLARE_WAV_ASSET(suffix_oclock)
-DECLARE_WAV_ASSET(suffix_exact_hour)
-DECLARE_WAV_ASSET(suffix_minute)
-HOUR_ASSET_LIST(DECLARE_WAV_ASSET)
-MINUTE_ASSET_LIST(DECLARE_WAV_ASSET)
+DECLARE_WAV_ASSET(suffix_point)
+DECLARE_WAV_ASSET(suffix_exact)
+DECLARE_WAV_ASSET(phrase_today_weather)
+DECLARE_WAV_ASSET(phrase_current_temperature)
+DECLARE_WAV_ASSET(phrase_weather_not_ready)
+DECLARE_WAV_ASSET(conjunction_to)
+DECLARE_WAV_ASSET(suffix_degree)
+DECLARE_WAV_ASSET(prefix_below_zero)
+DECLARE_WAV_ASSET(weather_sunny)
+DECLARE_WAV_ASSET(weather_cloudy)
+DECLARE_WAV_ASSET(weather_overcast)
+DECLARE_WAV_ASSET(weather_rain_snow)
+DECLARE_WAV_ASSET(weather_thunder_rain)
+DECLARE_WAV_ASSET(weather_rain)
+DECLARE_WAV_ASSET(weather_snow)
+DECLARE_WAV_ASSET(weather_sand_dust)
+DECLARE_WAV_ASSET(weather_haze)
+DECLARE_WAV_ASSET(weather_unknown)
+NUMBER_TOKEN_ASSET_LIST(DECLARE_WAV_ASSET)
 
-static const wav_asset_t s_hour_assets[] = {
-    HOUR_ASSET_LIST(WAV_ASSET_ENTRY)
+static const wav_asset_t s_number_token_assets[] = {
+    NUMBER_TOKEN_ASSET_LIST(WAV_ASSET_ENTRY)
 };
 
-static const wav_asset_t s_minute_assets[] = {
-    MINUTE_ASSET_LIST(WAV_ASSET_ENTRY)
+typedef enum {
+    WEATHER_SPEECH_SUNNY = 0,
+    WEATHER_SPEECH_CLOUDY,
+    WEATHER_SPEECH_OVERCAST,
+    WEATHER_SPEECH_RAIN_SNOW,
+    WEATHER_SPEECH_THUNDER_RAIN,
+    WEATHER_SPEECH_RAIN,
+    WEATHER_SPEECH_SNOW,
+    WEATHER_SPEECH_SAND_DUST,
+    WEATHER_SPEECH_HAZE,
+    WEATHER_SPEECH_UNKNOWN,
+} weather_speech_t;
+
+static const wav_asset_t s_weather_condition_assets[] = {
+    [WEATHER_SPEECH_SUNNY] = WAV_ASSET(weather_sunny),
+    [WEATHER_SPEECH_CLOUDY] = WAV_ASSET(weather_cloudy),
+    [WEATHER_SPEECH_OVERCAST] = WAV_ASSET(weather_overcast),
+    [WEATHER_SPEECH_RAIN_SNOW] = WAV_ASSET(weather_rain_snow),
+    [WEATHER_SPEECH_THUNDER_RAIN] = WAV_ASSET(weather_thunder_rain),
+    [WEATHER_SPEECH_RAIN] = WAV_ASSET(weather_rain),
+    [WEATHER_SPEECH_SNOW] = WAV_ASSET(weather_snow),
+    [WEATHER_SPEECH_SAND_DUST] = WAV_ASSET(weather_sand_dust),
+    [WEATHER_SPEECH_HAZE] = WAV_ASSET(weather_haze),
+    [WEATHER_SPEECH_UNKNOWN] = WAV_ASSET(weather_unknown),
 };
 
 static i2s_chan_handle_t s_tx_handle = NULL;
@@ -281,19 +244,20 @@ static esp_err_t write_silence_ms(uint32_t duration_ms)
     return ESP_OK;
 }
 
-static esp_err_t play_wav_info(const wav_info_t *wav)
+static esp_err_t play_wav_info_segment(const wav_info_t *wav, size_t sample_offset, size_t sample_count)
 {
     const int16_t *mono = (const int16_t *)wav->data;
-    const size_t total_samples = wav->size / sizeof(int16_t);
     int16_t frame_buf[AUDIO_PCM_CHUNK_SAMPLES * 2] = {0};
 
     ESP_RETURN_ON_FALSE(wav->sample_rate == s_output_sample_rate,
                         ESP_ERR_INVALID_STATE, TAG_AUDIO, "wav sample rate does not match configured i2s clock");
+    ESP_RETURN_ON_FALSE((sample_offset + sample_count) <= (wav->size / sizeof(int16_t)),
+                        ESP_ERR_INVALID_ARG, TAG_AUDIO, "wav sample range out of bounds");
 
-    for (size_t sample_offset = 0; sample_offset < total_samples; ) {
-        const size_t chunk_samples = min_size(AUDIO_PCM_CHUNK_SAMPLES, total_samples - sample_offset);
+    for (size_t played_samples = 0; played_samples < sample_count; ) {
+        const size_t chunk_samples = min_size(AUDIO_PCM_CHUNK_SAMPLES, sample_count - played_samples);
         for (size_t i = 0; i < chunk_samples; i++) {
-            const int16_t sample = apply_pcm_gain(mono[sample_offset + i], AUDIO_SPEECH_GAIN_PCT);
+            const int16_t sample = apply_pcm_gain(mono[sample_offset + played_samples + i], AUDIO_SPEECH_GAIN_PCT);
             frame_buf[i * 2] = sample;
             frame_buf[i * 2 + 1] = sample;
         }
@@ -303,10 +267,15 @@ static esp_err_t play_wav_info(const wav_info_t *wav)
             i2s_channel_write(s_tx_handle, frame_buf, chunk_samples * 2 * sizeof(int16_t),
                               &bytes_written, AUDIO_IO_TIMEOUT_MS),
             TAG_AUDIO, "write wav failed");
-        sample_offset += bytes_written / (2 * sizeof(int16_t));
+        played_samples += bytes_written / (2 * sizeof(int16_t));
     }
 
     return ESP_OK;
+}
+
+static esp_err_t play_wav_info(const wav_info_t *wav)
+{
+    return play_wav_info_segment(wav, 0, wav->size / sizeof(int16_t));
 }
 
 static esp_err_t play_wav_asset(const wav_asset_t *asset)
@@ -318,106 +287,198 @@ static esp_err_t play_wav_asset(const wav_asset_t *asset)
     return play_wav_info(&wav);
 }
 
-static const wav_asset_t *get_hour_asset(int hour)
+static const wav_asset_t *get_number_token_asset(int value)
 {
-    if (hour < 0 || hour >= (int)(sizeof(s_hour_assets) / sizeof(s_hour_assets[0]))) {
+    if (value < 0) {
         return NULL;
     }
 
-    return &s_hour_assets[hour];
+    if (value < (int)(sizeof(s_number_token_assets) / sizeof(s_number_token_assets[0]))) {
+        return &s_number_token_assets[value];
+    }
+
+    return NULL;
+}
+static weather_speech_t weather_speech_from_icon_code(const char *icon_code)
+{
+    int code = icon_code ? atoi(icon_code) : 0;
+
+    if (code == 100 || code == 150) {
+        return WEATHER_SPEECH_SUNNY;
+    }
+    if ((code >= 101 && code <= 103) || (code >= 151 && code <= 153)) {
+        return WEATHER_SPEECH_CLOUDY;
+    }
+    if (code == 104 || code == 154) {
+        return WEATHER_SPEECH_OVERCAST;
+    }
+    if (code == 312 || code == 313) {
+        return WEATHER_SPEECH_RAIN_SNOW;
+    }
+    if (code >= 302 && code <= 304) {
+        return WEATHER_SPEECH_THUNDER_RAIN;
+    }
+    if (code >= 300 && code <= 399) {
+        return WEATHER_SPEECH_RAIN;
+    }
+    if (code >= 400 && code <= 499) {
+        return WEATHER_SPEECH_SNOW;
+    }
+    if (code == 507 || code == 508) {
+        return WEATHER_SPEECH_SAND_DUST;
+    }
+    if ((code >= 500 && code <= 515) || code == 502) {
+        return WEATHER_SPEECH_HAZE;
+    }
+
+    return WEATHER_SPEECH_UNKNOWN;
 }
 
-static const wav_asset_t *get_minute_asset(int minute)
+static const wav_asset_t *get_weather_condition_asset(const char *icon_code)
 {
-    if (minute < 0 || minute >= (int)(sizeof(s_minute_assets) / sizeof(s_minute_assets[0]))) {
+    const weather_speech_t speech = weather_speech_from_icon_code(icon_code);
+    return &s_weather_condition_assets[speech];
+}
+
+static const char *weather_summary_icon_code(const weather_data_t *weather)
+{
+    if (weather == NULL) {
         return NULL;
     }
 
-    return &s_minute_assets[minute];
+    if (weather->forecast_valid && weather->forecast[0].icon_day[0]) {
+        return weather->forecast[0].icon_day;
+    }
+
+    if (weather->now_valid && weather->icon_code[0]) {
+        return weather->icon_code;
+    }
+
+    return NULL;
 }
 
-static esp_err_t audio_output_announce_time_locked(int hour, int minute, bool include_minute)
+static esp_err_t play_segment_gap(void)
 {
-    const wav_asset_t prefix_asset = WAV_ASSET(prefix_beijing_time);
-    const wav_asset_t oclock_asset = WAV_ASSET(suffix_oclock);
-    const wav_asset_t exact_hour_asset = WAV_ASSET(suffix_exact_hour);
-    const wav_asset_t minute_suffix_asset = WAV_ASSET(suffix_minute);
-    const wav_asset_t *hour_asset = get_hour_asset(hour);
-    const wav_asset_t *minute_asset = include_minute ? get_minute_asset(minute) : NULL;
-    bool tx_enabled = false;
+    return write_silence_ms(AUDIO_SEGMENT_GAP_MS);
+}
+
+static esp_err_t play_number_value(int value, bool leading_zero)
+{
+    const wav_asset_t *asset = NULL;
     esp_err_t ret;
 
-    ESP_RETURN_ON_FALSE(hour_asset != NULL, ESP_ERR_INVALID_ARG, TAG_AUDIO, "invalid hour");
-    if (include_minute) {
-        ESP_RETURN_ON_FALSE(minute_asset != NULL, ESP_ERR_INVALID_ARG, TAG_AUDIO, "invalid minute");
+    ESP_RETURN_ON_FALSE(value >= 0 && value < 100, ESP_ERR_INVALID_ARG, TAG_AUDIO, "unsupported number");
+
+    if (leading_zero && value < 10) {
+        asset = get_number_token_asset(0);
+        ESP_RETURN_ON_FALSE(asset != NULL, ESP_ERR_INVALID_STATE, TAG_AUDIO, "missing zero asset");
+        ret = play_wav_asset(asset);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            return ret;
+        }
     }
 
-    ret = audio_output_init();
+    if (value <= 10) {
+        asset = get_number_token_asset(value);
+        ESP_RETURN_ON_FALSE(asset != NULL, ESP_ERR_INVALID_STATE, TAG_AUDIO, "missing number asset");
+        return play_wav_asset(asset);
+    }
+
+    if (value < 20) {
+        ret = play_wav_asset(get_number_token_asset(10));
+        if (ret != ESP_OK) {
+            return ret;
+        }
+
+        if ((value % 10) == 0) {
+            return ESP_OK;
+        }
+
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            return ret;
+        }
+
+        return play_wav_asset(get_number_token_asset(value % 10));
+    }
+
+    ret = play_wav_asset(get_number_token_asset(value / 10));
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = play_segment_gap();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = play_wav_asset(get_number_token_asset(10));
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    if ((value % 10) == 0) {
+        return ESP_OK;
+    }
+
+    ret = play_segment_gap();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return play_wav_asset(get_number_token_asset(value % 10));
+}
+
+static esp_err_t play_temperature_value(int value)
+{
+    const wav_asset_t below_zero_asset = WAV_ASSET(prefix_below_zero);
+    esp_err_t ret;
+    int abs_value = value;
+
+    if (value < 0) {
+        abs_value = -value;
+        ret = play_wav_asset(&below_zero_asset);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            return ret;
+        }
+    }
+
+    return play_number_value(abs_value, false);
+}
+
+static esp_err_t audio_output_begin_speech_locked(bool *tx_enabled)
+{
+    esp_err_t ret = audio_output_init();
     if (ret != ESP_OK) {
         return ret;
     }
 
     ret = audio_output_set_sample_rate(AUDIO_SPEECH_SAMPLE_RATE_HZ);
     if (ret != ESP_OK) {
-        goto cleanup;
+        return ret;
     }
 
     ret = audio_output_enable_tx();
     if (ret != ESP_OK) {
-        goto cleanup;
-    }
-    tx_enabled = true;
-
-    ret = play_wav_asset(&prefix_asset);
-    if (ret != ESP_OK) {
-        goto cleanup;
+        return ret;
     }
 
-    ret = write_silence_ms(AUDIO_SEGMENT_GAP_MS);
-    if (ret != ESP_OK) {
-        goto cleanup;
-    }
+    *tx_enabled = true;
+    return ESP_OK;
+}
 
-    ret = play_wav_asset(hour_asset);
-    if (ret != ESP_OK) {
-        goto cleanup;
-    }
-
-    ret = write_silence_ms(AUDIO_SEGMENT_GAP_MS);
-    if (ret != ESP_OK) {
-        goto cleanup;
-    }
-
-    ret = play_wav_asset(include_minute ? &oclock_asset : &exact_hour_asset);
-    if (ret != ESP_OK) {
-        goto cleanup;
-    }
-
-    if (include_minute) {
-        ret = write_silence_ms(AUDIO_SEGMENT_GAP_MS);
-        if (ret != ESP_OK) {
-            goto cleanup;
-        }
-
-        ret = play_wav_asset(minute_asset);
-        if (ret != ESP_OK) {
-            goto cleanup;
-        }
-
-        ret = write_silence_ms(AUDIO_SEGMENT_GAP_MS);
-        if (ret != ESP_OK) {
-            goto cleanup;
-        }
-
-        ret = play_wav_asset(&minute_suffix_asset);
-        if (ret != ESP_OK) {
-            goto cleanup;
-        }
-    }
-
-    ret = write_silence_ms(AUDIO_SILENCE_TAIL_MS);
-
-cleanup:
+static esp_err_t audio_output_finish_speech_locked(bool tx_enabled, esp_err_t ret)
+{
     if (tx_enabled) {
         const esp_err_t disable_ret = audio_output_disable_tx();
         if (ret == ESP_OK && disable_ret != ESP_OK) {
@@ -433,6 +494,198 @@ cleanup:
     }
 
     return ret;
+}
+
+static esp_err_t audio_output_announce_time_locked(int hour, int minute, bool include_minute)
+{
+    const wav_asset_t prefix_asset = WAV_ASSET(prefix_beijing_time);
+    const wav_asset_t point_asset = WAV_ASSET(suffix_point);
+    const wav_asset_t exact_asset = WAV_ASSET(suffix_exact);
+    bool tx_enabled = false;
+    esp_err_t ret;
+
+    ESP_RETURN_ON_FALSE(hour >= 0 && hour < 24, ESP_ERR_INVALID_ARG, TAG_AUDIO, "invalid hour");
+    ESP_RETURN_ON_FALSE(minute >= 0 && minute < 60, ESP_ERR_INVALID_ARG, TAG_AUDIO, "invalid minute");
+
+    ret = audio_output_begin_speech_locked(&tx_enabled);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    ret = play_wav_asset(&prefix_asset);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    ret = write_silence_ms(AUDIO_SEGMENT_GAP_MS);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    ret = play_number_value(hour, false);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    ret = write_silence_ms(AUDIO_SEGMENT_GAP_MS);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    ret = play_wav_asset(&point_asset);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    if (!include_minute || minute == 0) {
+        ret = write_silence_ms(AUDIO_SEGMENT_GAP_MS);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_wav_asset(&exact_asset);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+    } else if (include_minute) {
+        ret = write_silence_ms(AUDIO_SEGMENT_GAP_MS);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_number_value(minute, minute < 10);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+    }
+
+    ret = write_silence_ms(AUDIO_SILENCE_TAIL_MS);
+
+cleanup:
+    return audio_output_finish_speech_locked(tx_enabled, ret);
+}
+
+static esp_err_t audio_output_announce_weather_locked(const weather_data_t *weather)
+{
+    const wav_asset_t today_weather_asset = WAV_ASSET(phrase_today_weather);
+    const wav_asset_t current_temperature_asset = WAV_ASSET(phrase_current_temperature);
+    const wav_asset_t weather_not_ready_asset = WAV_ASSET(phrase_weather_not_ready);
+    const wav_asset_t to_asset = WAV_ASSET(conjunction_to);
+    const wav_asset_t degree_asset = WAV_ASSET(suffix_degree);
+    const wav_asset_t *condition_asset = NULL;
+    const char *condition_code = NULL;
+    bool tx_enabled = false;
+    esp_err_t ret;
+
+    ESP_RETURN_ON_FALSE(weather != NULL, ESP_ERR_INVALID_ARG, TAG_AUDIO, "weather is null");
+
+    ret = audio_output_begin_speech_locked(&tx_enabled);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    if (!weather->now_valid && !weather->forecast_valid) {
+        ret = play_wav_asset(&weather_not_ready_asset);
+        if (ret == ESP_OK) {
+            ret = write_silence_ms(AUDIO_SILENCE_TAIL_MS);
+        }
+        goto cleanup;
+    }
+
+    condition_code = weather_summary_icon_code(weather);
+    condition_asset = get_weather_condition_asset(condition_code);
+
+    ret = play_wav_asset(&today_weather_asset);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    ret = play_segment_gap();
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    ret = play_wav_asset(condition_asset);
+    if (ret != ESP_OK) {
+        goto cleanup;
+    }
+
+    if (weather->forecast_valid) {
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_temperature_value(weather->temp_low);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_wav_asset(&to_asset);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_temperature_value(weather->temp_high);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_wav_asset(&degree_asset);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+    } else if (weather->now_valid) {
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_wav_asset(&current_temperature_asset);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_temperature_value(weather->temp_now);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_segment_gap();
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+
+        ret = play_wav_asset(&degree_asset);
+        if (ret != ESP_OK) {
+            goto cleanup;
+        }
+    }
+
+    ret = write_silence_ms(AUDIO_SILENCE_TAIL_MS);
+
+cleanup:
+    return audio_output_finish_speech_locked(tx_enabled, ret);
 }
 
 esp_err_t audio_output_init(void)
@@ -600,6 +853,18 @@ esp_err_t audio_output_play_beijing_time_announcement(int hour, int minute)
     }
 
     ret = audio_output_announce_time_locked(hour, minute, true);
+    audio_output_unlock();
+    return ret;
+}
+
+esp_err_t audio_output_play_weather_announcement(const weather_data_t *weather)
+{
+    esp_err_t ret = audio_output_lock();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = audio_output_announce_weather_locked(weather);
     audio_output_unlock();
     return ret;
 }

@@ -1124,6 +1124,7 @@ static void update_indoor_text(void)
 static void update_weather_text(void)
 {
     weather_data_t weather = {0};
+    const char *summary_icon_code = NULL;
     char weather_title_text[sizeof(s_ui.weather_title_text)];
     char weather_temp_text[sizeof(s_ui.weather_temp_text)];
     char weather_cond_text[sizeof(s_ui.weather_cond_text)];
@@ -1157,7 +1158,14 @@ static void update_weather_text(void)
         }
         set_weather_icon_mode(WEATHER_ICON_PARTLY_CLOUDY);
     } else {
-        strlcpy(weather_title_text, "Outdoor Weather", sizeof(weather_title_text));
+        if (weather.forecast_valid) {
+            strlcpy(weather_title_text, "Today's Weather", sizeof(weather_title_text));
+            summary_icon_code = weather.forecast[0].icon_day;
+        } else {
+            strlcpy(weather_title_text, "Current Weather", sizeof(weather_title_text));
+            summary_icon_code = weather.icon_code;
+        }
+
         if (weather.forecast_valid) {
             snprintf(weather_temp_text, sizeof(weather_temp_text), "%d~%d%sC",
                      weather.temp_low, weather.temp_high, UI_DEGREE_SYMBOL);
@@ -1168,16 +1176,19 @@ static void update_weather_text(void)
             snprintf(weather_temp_text, sizeof(weather_temp_text), "--~--%sC", UI_DEGREE_SYMBOL);
         }
 
-        if (weather.now_valid) {
-            snprintf(weather_cond_text, sizeof(weather_cond_text), "%s", weather_condition_text(weather.icon_code));
-        } else if (weather.forecast_valid) {
+        if (summary_icon_code && summary_icon_code[0]) {
             snprintf(weather_cond_text, sizeof(weather_cond_text), "%s",
-                     weather_condition_text(weather.forecast[0].icon_day));
+                     weather_condition_text(summary_icon_code));
         } else {
             strlcpy(weather_cond_text, "Updating...", sizeof(weather_cond_text));
         }
 
-        strlcpy(weather_meta_text, "", sizeof(weather_meta_text));
+        if (weather.forecast_valid && weather.now_valid) {
+            snprintf(weather_meta_text, sizeof(weather_meta_text), "Now %d%sC",
+                     weather.temp_now, UI_DEGREE_SYMBOL);
+        } else {
+            strlcpy(weather_meta_text, "", sizeof(weather_meta_text));
+        }
         format_weather_update_text(weather.now_valid ? weather.now_update_time : weather.forecast_update_time,
                                    weather_update_text, sizeof(weather_update_text));
 
@@ -1209,10 +1220,8 @@ static void update_weather_text(void)
             }
         }
 
-        if (weather.now_valid) {
-            set_weather_icon_mode(weather_icon_mode_from_code(weather.icon_code));
-        } else if (weather.forecast_valid) {
-            set_weather_icon_mode(weather_icon_mode_from_code(weather.forecast[0].icon_day));
+        if (summary_icon_code && summary_icon_code[0]) {
+            set_weather_icon_mode(weather_icon_mode_from_code(summary_icon_code));
         } else {
             set_weather_icon_mode(WEATHER_ICON_PARTLY_CLOUDY);
         }
