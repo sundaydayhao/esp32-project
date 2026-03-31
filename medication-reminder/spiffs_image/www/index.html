@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>老年人用药提醒 - 配置</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>💊 用药提醒配置</h1>
+    <div id="status-bar" class="status-bar">加载中...</div>
+  </header>
+
+  <!-- 标签页 -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('reminders')">提醒设置</button>
+    <button class="tab-btn" onclick="showTab('log')">用药记录</button>
+    <button class="tab-btn" onclick="showTab('wifi')">WiFi设置</button>
+  </div>
+
+  <!-- 提醒设置 -->
+  <div id="tab-reminders" class="tab-content active">
+    <div id="reminders-list"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveReminders()">💾 保存设置</button>
+    </div>
+  </div>
+
+  <!-- 用药记录 -->
+  <div id="tab-log" class="tab-content">
+    <div id="log-content" class="log-box">加载中...</div>
+    <div class="btn-row">
+      <button class="btn btn-danger" onclick="clearLog()">🗑 清空记录</button>
+      <button class="btn btn-secondary" onclick="loadLog()">🔄 刷新</button>
+    </div>
+  </div>
+
+  <!-- WiFi设置 -->
+  <div id="tab-wifi" class="tab-content">
+    <div class="form-group">
+      <label>WiFi 名称 (SSID)</label>
+      <input type="text" id="wifi-ssid" placeholder="请输入WiFi名称">
+    </div>
+    <div class="form-group">
+      <label>WiFi 密码</label>
+      <input type="password" id="wifi-pass" placeholder="请输入WiFi密码">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveWifi()">💾 保存并连接</button>
+    </div>
+    <p class="hint">保存后设备将尝试连接新WiFi，如连接失败会自动切回AP模式。</p>
+  </div>
+
+  <div id="toast" class="toast"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

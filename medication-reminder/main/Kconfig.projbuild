@@ -1,0 +1,162 @@
+menu "Medication Reminder Configuration"
+
+    menu "WiFi Settings"
+        config WIFI_SSID
+            string "WiFi SSID"
+            default "MyWiFi"
+            help
+                WiFi网络名称（SSID），用于连接家庭网络
+
+        config WIFI_PASSWORD
+            string "WiFi Password"
+            default "password123"
+            help
+                WiFi网络密码
+
+        config WIFI_MAXIMUM_RETRY
+            int "Maximum retry count"
+            default 5
+            help
+                WiFi连接最大重试次数，超过后切换到AP模式
+    endmenu
+
+    menu "NTP Settings"
+        config NTP_SERVER1
+            string "NTP Server 1"
+            default "ntp.aliyun.com"
+            help
+                主NTP时间服务器（阿里云）
+
+        config NTP_SERVER2
+            string "NTP Server 2"
+            default "cn.pool.ntp.org"
+            help
+                备用NTP时间服务器
+
+        config TIMEZONE
+            string "Timezone"
+            default "CST-8"
+            help
+                时区设置，中国标准时间为CST-8
+    endmenu
+
+    menu "Hardware Pin Configuration"
+        comment "TFT LCD (ILI9341) SPI Pins"
+
+        config LCD_SPI_MOSI
+            int "LCD SPI MOSI Pin"
+            default 11
+            help
+                TFT LCD SPI数据引脚（MOSI）
+
+        config LCD_SPI_CLK
+            int "LCD SPI CLK Pin"
+            default 12
+            help
+                TFT LCD SPI时钟引脚
+
+        config LCD_CS_PIN
+            int "LCD CS Pin"
+            default 10
+            help
+                TFT LCD片选引脚
+
+        config LCD_DC_PIN
+            int "LCD DC Pin"
+            default 9
+            help
+                TFT LCD数据/命令选择引脚
+
+        config LCD_RST_PIN
+            int "LCD RST Pin"
+            default 8
+            help
+                TFT LCD复位引脚
+
+        config LCD_BL_PIN
+            int "LCD Backlight Pin"
+            default 7
+            help
+                TFT LCD背光控制引脚（PWM）
+
+        comment "DS3231 RTC I2C Pins"
+
+        config I2C_SDA_PIN
+            int "I2C SDA Pin"
+            default 4
+            help
+                DS3231 RTC I2C数据引脚
+
+        config I2C_SCL_PIN
+            int "I2C SCL Pin"
+            default 5
+            help
+                DS3231 RTC I2C时钟引脚
+
+        comment "Buzzer and LED"
+
+        config BUZZER_PIN
+            int "Buzzer Pin"
+            default 6
+            help
+                有源蜂鸣器控制引脚
+
+        config LED_RED_PIN
+            int "Red LED Pin"
+            default 3
+            help
+                红色LED引脚（提醒状态指示）
+
+        comment "Buttons"
+
+        config BTN_CONFIRM_PIN
+            int "Confirm Button Pin"
+            default 1
+            help
+                确认按键引脚（已服药确认），下拉，按下为高电平
+
+        config BTN_PAUSE_PIN
+            int "Pause Button Pin"
+            default 2
+            help
+                暂停/历史按键引脚，下拉，按下为高电平
+    endmenu
+
+    menu "Reminder Settings"
+        config REMINDER_TIMEOUT_MIN
+            int "Reminder timeout (minutes)"
+            default 5
+            range 1 30
+            help
+                提醒超时时间（分钟），超时后升级为持续蜂鸣
+
+        config REMINDER_ESCALATE_MIN
+            int "Escalation timeout (minutes)"
+            default 5
+            range 1 30
+            help
+                升级提醒超时时间（分钟），超时后标记为已错过
+
+        config MAX_REMINDERS
+            int "Maximum number of reminders"
+            default 6
+            range 1 8
+            help
+                最大提醒数量（每日）
+    endmenu
+
+    menu "Web Server Settings"
+        config AP_SSID
+            string "AP Mode SSID"
+            default "MedReminder-Config"
+            help
+                AP配置模式的WiFi名称
+
+        config AP_PASSWORD
+            string "AP Mode Password"
+            default "12345678"
+            help
+                AP配置模式的WiFi密码（至少8位）
+    endmenu
+
+endmenu
