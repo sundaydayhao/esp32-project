@@ -5,6 +5,10 @@ cmake_minimum_required(VERSION 3.16)
 # Add this line to disable the specific warning
 add_compile_options(-Wno-missing-field-initializers)
 
+if(NOT DEFINED IDF_TARGET)
+    set(IDF_TARGET "esp32s3" CACHE STRING "Default ESP-IDF target")
+endif()
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.
 idf_build_set_property(MINIMAL_BUILD ON)
