@@ -22,17 +22,19 @@ The stable version of v1 is 1.9.2. You can switch to v1 by running `git checkout
 
 ### Features Implemented
 
-- Wi-Fi / ML307 Cat.1 4G
-- Offline voice wake-up [ESP-SR](https://github.com/espressif/esp-sr)
-- Supports two communication protocols ([Websocket](docs/websocket.md) or MQTT+UDP)
-- Uses OPUS audio codec
-- Voice interaction based on streaming ASR + LLM + TTS architecture
-- Speaker recognition, identifies the current speaker [3D Speaker](https://github.com/modelscope/3D-Speaker)
-- OLED / LCD display, supports emoji display
-- Battery display and power management
-- Multi-language support (Chinese, English, Japanese)
-- Supports ESP32-C3, ESP32-S3, ESP32-P4 chip platforms
-- Device-side MCP for device control (Speaker, LED, Servo, GPIO, etc.)
+- Wi-Fi configuration mode, optional ESP-BLUFI BLE provisioning, and ML307 Cat.1 4G on supported boards
+- Offline wake-word detection with [ESP-SR](https://github.com/espressif/esp-sr), plus customizable wake words
+- Supports two communication protocols ([WebSocket](docs/websocket.md) or MQTT+UDP)
+- Streaming voice interaction based on ASR + LLM + TTS, using Opus audio transport
+- Manual, auto-stop, and realtime conversation modes with configurable AEC behavior
+- OLED / LCD / emote display support with chat UI, notifications, battery and network status, weather, and home clock cards
+- Emoji and GIF emotion rendering, preview images, and screen snapshot support on supported LVGL devices
+- Light / dark themes and asset-driven customization for fonts, emoji collections, background images, and subtitle visibility
+- Battery monitoring, backlight control, power management, and OTA firmware upgrade
+- Automatic assets loading and online assets package updates
+- 38 localized UI and audio packs
+- Supports ESP32, ESP32-C3, ESP32-C5, ESP32-C6, ESP32-S3, and ESP32-P4
+- Device-side MCP tools for volume, brightness, theme, system info, reboot, firmware upgrade, screen utilities, camera capture, and board-specific IoT control
 - Cloud-side MCP to extend large model capabilities (smart home control, PC desktop operation, knowledge search, email, etc.)
 - Customizable wake words, fonts, emojis, and chat backgrounds with online web-based editing ([Custom Assets Generator](https://github.com/78/xiaozhi-assets-generator))
 
