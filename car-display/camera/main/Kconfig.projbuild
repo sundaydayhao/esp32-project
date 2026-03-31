@@ -1,0 +1,210 @@
+menu "车辆盲区摄像头配置"
+
+    menu "摄像头引脚配置"
+        comment "左侧摄像头引脚 (OV2640)"
+
+        config CAM_LEFT_PWDN_GPIO
+            int "左摄像头 PWDN GPIO"
+            default 1
+            help
+                左侧摄像头电源控制引脚，低电平有效
+
+        config CAM_LEFT_RESET_GPIO
+            int "左摄像头 RESET GPIO"
+            default 2
+            help
+                左侧摄像头复位引脚，低电平有效
+
+        comment "右侧摄像头引脚 (OV2640)"
+
+        config CAM_RIGHT_PWDN_GPIO
+            int "右摄像头 PWDN GPIO"
+            default 3
+            help
+                右侧摄像头电源控制引脚，低电平有效
+
+        config CAM_RIGHT_RESET_GPIO
+            int "右摄像头 RESET GPIO"
+            default 46
+            help
+                右侧摄像头复位引脚，低电平有效
+
+        comment "共享摄像头引脚 (DVP接口)"
+
+        config CAM_XCLK_GPIO
+            int "摄像头 XCLK GPIO"
+            default 15
+            help
+                摄像头时钟输出引脚
+
+        config CAM_PCLK_GPIO
+            int "摄像头 PCLK GPIO"
+            default 13
+            help
+                摄像头像素时钟引脚
+
+        config CAM_VSYNC_GPIO
+            int "摄像头 VSYNC GPIO"
+            default 6
+            help
+                摄像头垂直同步引脚
+
+        config CAM_HREF_GPIO
+            int "摄像头 HREF GPIO"
+            default 7
+            help
+                摄像头水平参考引脚
+
+        config CAM_D0_GPIO
+            int "摄像头 D0 GPIO"
+            default 11
+
+        config CAM_D1_GPIO
+            int "摄像头 D1 GPIO"
+            default 9
+
+        config CAM_D2_GPIO
+            int "摄像头 D2 GPIO"
+            default 8
+
+        config CAM_D3_GPIO
+            int "摄像头 D3 GPIO"
+            default 10
+
+        config CAM_D4_GPIO
+            int "摄像头 D4 GPIO"
+            default 12
+
+        config CAM_D5_GPIO
+            int "摄像头 D5 GPIO"
+            default 18
+
+        config CAM_D6_GPIO
+            int "摄像头 D6 GPIO"
+            default 17
+
+        config CAM_D7_GPIO
+            int "摄像头 D7 GPIO"
+            default 16
+
+        config CAM_SDA_GPIO
+            int "摄像头 I2C SDA GPIO"
+            default 4
+
+        config CAM_SCL_GPIO
+            int "摄像头 I2C SCL GPIO"
+            default 5
+    endmenu
+
+    menu "LCD显示屏引脚配置 (ST7789/ILI9341 SPI)"
+
+        config LCD_MOSI_GPIO
+            int "LCD MOSI GPIO"
+            default 35
+
+        config LCD_SCLK_GPIO
+            int "LCD SCLK GPIO"
+            default 36
+
+        config LCD_CS_GPIO
+            int "LCD CS GPIO"
+            default 34
+
+        config LCD_DC_GPIO
+            int "LCD DC GPIO"
+            default 33
+
+        config LCD_RST_GPIO
+            int "LCD RST GPIO"
+            default 37
+
+        config LCD_BL_GPIO
+            int "LCD 背光 GPIO"
+            default 38
+
+        config LCD_WIDTH
+            int "LCD 宽度 (像素)"
+            default 320
+
+        config LCD_HEIGHT
+            int "LCD 高度 (像素)"
+            default 240
+
+        config LCD_SPI_CLOCK_HZ
+            int "LCD SPI 时钟频率 (Hz)"
+            default 40000000
+            help
+                LCD SPI总线时钟频率，最大80MHz
+    endmenu
+
+    menu "转向灯检测引脚配置"
+
+        config TURN_LEFT_GPIO
+            int "左转向灯检测 GPIO"
+            default 39
+            help
+                左转向灯信号输入引脚，高电平表示左转
+
+        config TURN_RIGHT_GPIO
+            int "右转向灯检测 GPIO"
+            default 40
+            help
+                右转向灯信号输入引脚，高电平表示右转
+
+        config TURN_SIGNAL_DEBOUNCE_MS
+            int "转向灯防抖时间 (ms)"
+            default 50
+    endmenu
+
+    menu "摄像头采集参数"
+
+        config CAM_FRAME_WIDTH
+            int "摄像头帧宽度"
+            default 320
+            help
+                摄像头采集分辨率宽度
+
+        config CAM_FRAME_HEIGHT
+            int "摄像头帧高度"
+            default 240
+            help
+                摄像头采集分辨率高度
+
+        config CAM_XCLK_FREQ_HZ
+            int "摄像头 XCLK 频率 (Hz)"
+            default 20000000
+
+        config CAM_SWITCH_DELAY_MS
+            int "摄像头切换延迟 (ms)"
+            default 50
+            help
+                切换左右摄像头时的稳定等待时间
+
+        config CAM_FRAME_RATE
+            int "目标帧率 (fps)"
+            default 15
+            range 5 30
+    endmenu
+
+    menu "盲区警告配置"
+
+        config BLIND_SPOT_WARNING_ENABLED
+            bool "启用盲区警告叠加"
+            default y
+            help
+                在摄像头画面上叠加距离警告颜色框
+
+        config BLIND_SPOT_WARN_THRESHOLD
+            int "警告距离阈值 (像素占比%)"
+            default 30
+            help
+                当检测到物体占画面宽度超过此比例时显示警告
+
+        config BLIND_SPOT_DANGER_THRESHOLD
+            int "危险距离阈值 (像素占比%)"
+            default 50
+            help
+                当检测到物体占画面宽度超过此比例时显示危险警告
+    endmenu
+
+endmenu

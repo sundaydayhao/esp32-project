@@ -1,0 +1,20 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "camera_manager.c"
+        "lcd_driver.c"
+        "blind_spot_ui.c"
+        "turn_signal.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        esp_driver_gpio
+        esp_driver_spi
+        esp_driver_i2c
+        esp_timer
+        freertos
+        esp_lcd
+        esp_camera
+        nvs_flash
+        driver
+        log
+)
