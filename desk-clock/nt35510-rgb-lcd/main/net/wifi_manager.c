@@ -27,11 +27,14 @@ static EventGroupHandle_t s_evt_grp = NULL;
 static esp_netif_t *s_sta_netif = NULL;
 static esp_netif_t *s_ap_netif = NULL;
 static esp_timer_handle_t s_connect_timer = NULL;
+static esp_timer_handle_t s_reconnect_timer = NULL;
 static wifi_state_t s_state = WIFI_STATE_DISCONNECTED;
 static int s_retry = 0;
 static bool s_wifi_started = false;
 static bool s_suppress_disconnect = false;
+static bool s_reconnect_pending = false;
 static bool s_have_credentials = false;
+static wifi_err_reason_t s_last_disconnect_reason = WIFI_REASON_UNSPECIFIED;
 static char s_ip[20] = "0.0.0.0";
 static char s_ap_client_ip[20] = "0.0.0.0";
 static char s_saved_ssid[WIFI_SSID_MAX_LEN] = "";
@@ -41,12 +44,172 @@ static uint8_t s_ap_client_mac[6] = {0};
 
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data);
 static void wifi_connect_timeout_cb(void *arg);
+static void wifi_reconnect_timer_cb(void *arg);
 static esp_err_t start_station(void);
 static esp_err_t start_provisioning_ap(void);
 static esp_err_t configure_provisioning_ap_netif(void);
 static esp_err_t load_credentials(char *ssid, size_t ssid_len, char *pass, size_t pass_len, bool *from_nvs);
 static esp_err_t save_credentials(const char *ssid, const char *pass);
 static esp_err_t clear_credentials(void);
+static void set_state(wifi_state_t state);
+static bool has_text(const char *value);
+
+static const char *wifi_reason_to_name(uint8_t reason)
+{
+    switch (reason) {
+    case WIFI_REASON_BEACON_TIMEOUT:
+        return "BEACON_TIMEOUT";
+    case WIFI_REASON_NO_AP_FOUND:
+        return "NO_AP_FOUND";
+    case WIFI_REASON_AUTH_FAIL:
+        return "AUTH_FAIL";
+    case WIFI_REASON_ASSOC_FAIL:
+        return "ASSOC_FAIL";
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:
+        return "HANDSHAKE_TIMEOUT";
+    case WIFI_REASON_CONNECTION_FAIL:
+        return "CONNECTION_FAIL";
+    case WIFI_REASON_AP_TSF_RESET:
+        return "AP_TSF_RESET";
+    case WIFI_REASON_ROAMING:
+        return "ROAMING";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static bool wifi_reason_is_auth_failure(uint8_t reason)
+{
+    switch (reason) {
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_ASSOC_FAIL:
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool wifi_reason_is_runtime_drop(uint8_t reason)
+{
+    switch (reason) {
+    case WIFI_REASON_BEACON_TIMEOUT:
+    case WIFI_REASON_NO_AP_FOUND:
+    case WIFI_REASON_AP_TSF_RESET:
+    case WIFI_REASON_ROAMING:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static void stop_connect_timer(void)
+{
+    if (s_connect_timer) {
+        esp_timer_stop(s_connect_timer);
+    }
+}
+
+static void start_connect_timer(void)
+{
+    if (!s_connect_timer) {
+        return;
+    }
+
+    esp_timer_stop(s_connect_timer);
+    esp_timer_start_once(s_connect_timer, (uint64_t)WIFI_CONNECT_TIMEOUT_MS * 1000ULL);
+}
+
+static void stop_reconnect_timer(void)
+{
+    if (s_reconnect_timer) {
+        esp_timer_stop(s_reconnect_timer);
+    }
+}
+
+static uint32_t wifi_reconnect_delay_ms(int attempt)
+{
+    uint32_t delay_ms = WIFI_RECONNECT_DELAY_MS;
+    int backoff_steps = attempt - 1;
+
+    if (backoff_steps < 0) {
+        backoff_steps = 0;
+    }
+    if (backoff_steps > 5) {
+        backoff_steps = 5;
+    }
+
+    while (backoff_steps-- > 0 && delay_ms < WIFI_CONNECT_TIMEOUT_MS) {
+        if (delay_ms > WIFI_CONNECT_TIMEOUT_MS / 2U) {
+            delay_ms = WIFI_CONNECT_TIMEOUT_MS;
+            break;
+        }
+        delay_ms *= 2U;
+    }
+
+    return delay_ms;
+}
+
+static void maybe_enter_provisioning_for_auth_failures(void)
+{
+    if (!wifi_reason_is_auth_failure(s_last_disconnect_reason) || s_retry < WIFI_MAX_RETRY) {
+        return;
+    }
+
+    stop_connect_timer();
+    stop_reconnect_timer();
+    ESP_LOGW(TAG_WIFI,
+             "STA auth-related failures reached %d/%d, switching to provisioning (reason=%s/%u)",
+             s_retry, WIFI_MAX_RETRY, wifi_reason_to_name(s_last_disconnect_reason),
+             s_last_disconnect_reason);
+    set_state(WIFI_STATE_FAILED);
+    start_provisioning_ap();
+}
+
+static void schedule_sta_reconnect(uint8_t reason, const char *source)
+{
+    uint32_t delay_ms = 0;
+    bool auth_failure = false;
+    bool runtime_drop = false;
+
+    if (!has_text(s_saved_ssid)) {
+        set_state(WIFI_STATE_FAILED);
+        start_provisioning_ap();
+        return;
+    }
+
+    auth_failure = wifi_reason_is_auth_failure(reason);
+    runtime_drop = wifi_reason_is_runtime_drop(reason);
+    s_last_disconnect_reason = (wifi_err_reason_t)reason;
+
+    if (s_reconnect_pending) {
+        ESP_LOGW(TAG_WIFI, "Reconnect already pending, ignore duplicate trigger source=%s reason=%s/%u",
+                 source ? source : "unknown", wifi_reason_to_name(reason), reason);
+        return;
+    }
+
+    s_retry++;
+
+    maybe_enter_provisioning_for_auth_failures();
+    if (s_state == WIFI_STATE_CONFIGURING || s_state == WIFI_STATE_FAILED) {
+        return;
+    }
+
+    delay_ms = wifi_reconnect_delay_ms(s_retry);
+    stop_connect_timer();
+    stop_reconnect_timer();
+    s_reconnect_pending = true;
+    set_state(WIFI_STATE_CONNECTING);
+    ESP_LOGW(TAG_WIFI,
+             "STA reconnect scheduled in %lu ms, attempt %d, source=%s reason=%s/%u%s%s",
+             (unsigned long)delay_ms, s_retry, source ? source : "unknown",
+             wifi_reason_to_name(reason), reason,
+             runtime_drop ? " runtime-drop" : "",
+             auth_failure ? " auth-related" : "");
+    if (s_reconnect_timer) {
+        esp_timer_start_once(s_reconnect_timer, (uint64_t)delay_ms * 1000ULL);
+    }
+}
 
 static void set_state(wifi_state_t state)
 {
@@ -108,6 +271,9 @@ static esp_err_t stop_wifi_if_started(void)
         return ESP_OK;
     }
 
+    stop_connect_timer();
+    stop_reconnect_timer();
+    s_reconnect_pending = false;
     s_suppress_disconnect = true;
     esp_err_t ret = esp_wifi_stop();
     if (ret != ESP_OK && ret != ESP_ERR_WIFI_NOT_STARTED) {
@@ -257,6 +423,13 @@ static esp_err_t configure_wifi_base(void)
         };
         ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_connect_timer));
     }
+    if (!s_reconnect_timer) {
+        const esp_timer_create_args_t timer_args = {
+            .callback = wifi_reconnect_timer_cb,
+            .name = "wifi_reconnect",
+        };
+        ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_reconnect_timer));
+    }
 
     return ESP_OK;
 }
@@ -279,7 +452,10 @@ static esp_err_t start_station(void)
     wifi_cfg.sta.pmf_cfg.required = false;
 
     s_retry = 0;
+    s_last_disconnect_reason = WIFI_REASON_UNSPECIFIED;
+    s_reconnect_pending = false;
     strlcpy(s_ip, "0.0.0.0", sizeof(s_ip));
+    stop_reconnect_timer();
     set_state(WIFI_STATE_CONNECTING);
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -339,9 +515,9 @@ static esp_err_t start_provisioning_ap(void)
     ap_cfg.ap.max_connection = 4;
     ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
 
-    if (s_connect_timer) {
-        esp_timer_stop(s_connect_timer);
-    }
+    stop_connect_timer();
+    stop_reconnect_timer();
+    s_reconnect_pending = false;
     ESP_RETURN_ON_ERROR(configure_provisioning_ap_netif(), TAG_WIFI,
                         "configure provisioning ap netif failed");
     clear_ap_client_info();
@@ -365,9 +541,28 @@ static void wifi_connect_timeout_cb(void *arg)
         return;
     }
 
-    ESP_LOGW(TAG_WIFI, "WiFi connect timeout, entering provisioning mode");
-    set_state(WIFI_STATE_FAILED);
-    start_provisioning_ap();
+    ESP_LOGW(TAG_WIFI, "WiFi connect timeout while connecting to %s", s_saved_ssid);
+    schedule_sta_reconnect((uint8_t)s_last_disconnect_reason, "connect-timeout");
+}
+
+static void wifi_reconnect_timer_cb(void *arg)
+{
+    esp_err_t ret = ESP_OK;
+
+    (void)arg;
+
+    if (s_state == WIFI_STATE_CONFIGURING || s_suppress_disconnect || !has_text(s_saved_ssid)) {
+        return;
+    }
+
+    s_reconnect_pending = false;
+    set_state(WIFI_STATE_CONNECTING);
+    start_connect_timer();
+    ret = esp_wifi_connect();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG_WIFI, "esp_wifi_connect failed during retry: %s", esp_err_to_name(ret));
+        schedule_sta_reconnect((uint8_t)s_last_disconnect_reason, "connect-call-failed");
+    }
 }
 
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
@@ -376,10 +571,9 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
 
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         set_state(WIFI_STATE_CONNECTING);
-        if (s_connect_timer) {
-            esp_timer_stop(s_connect_timer);
-            esp_timer_start_once(s_connect_timer, (uint64_t)WIFI_CONNECT_TIMEOUT_MS * 1000ULL);
-        }
+        start_connect_timer();
+        stop_reconnect_timer();
+        s_reconnect_pending = false;
         esp_wifi_connect();
         return;
     }
@@ -392,17 +586,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
             return;
         }
 
-        if (s_retry < WIFI_MAX_RETRY && has_text(s_saved_ssid)) {
-            s_retry++;
-            set_state(WIFI_STATE_CONNECTING);
-            ESP_LOGW(TAG_WIFI, "STA disconnected, retry %d/%d reason=%d",
-                     s_retry, WIFI_MAX_RETRY, evt ? evt->reason : -1);
-            esp_wifi_connect();
-        } else {
-            ESP_LOGW(TAG_WIFI, "STA connect failed, switching to provisioning");
-            set_state(WIFI_STATE_FAILED);
-            start_provisioning_ap();
-        }
+        schedule_sta_reconnect(evt ? evt->reason : WIFI_REASON_UNSPECIFIED, "sta-disconnected");
         return;
     }
 
@@ -420,9 +604,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
 
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&evt->ip_info.ip));
         s_retry = 0;
-        if (s_connect_timer) {
-            esp_timer_stop(s_connect_timer);
-        }
+        s_last_disconnect_reason = WIFI_REASON_UNSPECIFIED;
+        s_reconnect_pending = false;
+        stop_connect_timer();
+        stop_reconnect_timer();
         set_state(WIFI_STATE_CONNECTED);
         ESP_LOGI(TAG_WIFI, "Connected, IP: %s", s_ip);
         return;
