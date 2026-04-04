@@ -202,3 +202,48 @@ menu "Desk Clock Hardware"
     endif
 
 endmenu
+
+menu "Desk Clock Storage"
+
+    config DESK_CLOCK_SD_LOG_ENABLE
+        bool "Write runtime logs to SD card"
+        default y
+        help
+            When enabled, the firmware will try to mount an SPI-mode SD card
+            during boot and mirror ESP-IDF log output to a file on the card.
+            If the card is missing or the pins are not configured, the device
+            still boots normally and keeps logging to the serial console only.
+
+    if DESK_CLOCK_SD_LOG_ENABLE
+
+        config DESK_CLOCK_SD_LOG_PIN_MISO
+            int "SD SPI MISO pin"
+            range -1 48
+            default -1
+
+        config DESK_CLOCK_SD_LOG_PIN_MOSI
+            int "SD SPI MOSI pin"
+            range -1 48
+            default -1
+
+        config DESK_CLOCK_SD_LOG_PIN_SCLK
+            int "SD SPI SCLK pin"
+            range -1 48
+            default -1
+
+        config DESK_CLOCK_SD_LOG_PIN_CS
+            int "SD SPI CS pin"
+            range -1 48
+            default -1
+
+        config DESK_CLOCK_SD_LOG_FREQ_MHZ
+            int "SD SPI clock (MHz)"
+            range 1 40
+            default 10
+            help
+                Reduce this if the card is unstable on long wires or weak
+                signal integrity.
+
+    endif
+
+endmenu

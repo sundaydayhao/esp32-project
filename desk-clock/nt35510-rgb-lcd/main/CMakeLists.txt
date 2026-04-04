@@ -16,6 +16,7 @@ idf_component_register(
         "ui/ui_font_noto_sc_16.c"
         "web/web_dashboard.c"
         "storage/config_store.c"
+        "storage/log_file.c"
     INCLUDE_DIRS
         "."
         "audio"
@@ -44,6 +45,10 @@ idf_component_register(
         heap
         json
         mbedtls
+        fatfs
+        sdmmc
+        esp_driver_sdspi
+        esp_driver_spi
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
         "web/dashboard.html"

@@ -40,6 +40,7 @@
 - 整点语音报时，默认在 `08:00` 到 `20:00` 之间触发
 - 独立按键触发“北京时间 xx 点 xx 分”语音播报
 - 开机音频测试音
+- 运行日志镜像到 `SD` 卡文件，便于离线排障
 - `NT35510` 的 `8-bit` / `16-bit I80` 总线支持
 - `LCD diagnostic` 诊断模式
 - `UI only` 模式和 `full app` 模式
@@ -76,6 +77,20 @@
 - `BCLK`: `GPIO47`
 - `WS/LRCK`: `GPIO48`
 - `DIN`: `GPIO46`
+
+### SD 日志
+
+运行日志支持通过 `SPI` 模式写入 `SD` 卡，相关配置位于 `menuconfig -> Desk Clock Storage`：
+
+- `DESK_CLOCK_SD_LOG_PIN_MISO`
+- `DESK_CLOCK_SD_LOG_PIN_MOSI`
+- `DESK_CLOCK_SD_LOG_PIN_SCLK`
+- `DESK_CLOCK_SD_LOG_PIN_CS`
+- `DESK_CLOCK_SD_LOG_FREQ_MHZ`
+
+日志文件默认路径：
+
+- `/sdcard/logs/runtime.log`
 
 ### 按键
 

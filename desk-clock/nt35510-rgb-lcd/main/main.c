@@ -18,6 +18,7 @@
 #include "net/wifi_manager.h"
 #include "sensor/dht11_sensor.h"
 #include "storage/config_store.h"
+#include "storage/log_file.h"
 #include "ui/ui_renderer.h"
 #include "web/web_dashboard.h"
 
@@ -69,6 +70,14 @@ static void start_ui_task_or_halt(void)
 
 void app_main(void)
 {
+    ESP_LOGI(TAG_MAIN, "SD log config: miso=%d mosi=%d sclk=%d cs=%d freq=%dMHz",
+             SD_LOG_PIN_MISO, SD_LOG_PIN_MOSI, SD_LOG_PIN_SCLK, SD_LOG_PIN_CS, SD_LOG_FREQ_MHZ);
+
+    esp_err_t log_ret = log_file_init();
+    if (log_ret != ESP_OK && log_ret != ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG_MAIN, "SD log init failed: %s", esp_err_to_name(log_ret));
+    }
+
     ESP_LOGI(TAG_MAIN, "========================================");
     ESP_LOGI(TAG_MAIN, "  %s v%s", DEVICE_NAME, FW_VERSION_STR);
     ESP_LOGI(TAG_MAIN, "  ESP32-S3 @ 240MHz + %s", DISPLAY_BOARD_NAME);

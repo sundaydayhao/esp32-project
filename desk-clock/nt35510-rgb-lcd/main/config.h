@@ -151,6 +151,26 @@
 #define NVS_KEY_ENV_HISTORY     "env_history"
 
 /* ================================================================
+ * SD log
+ * ================================================================ */
+#define SD_LOG_MOUNT_POINT      "/sdcard"
+#define SD_LOG_DIR_PATH         SD_LOG_MOUNT_POINT "/logs"
+#define SD_LOG_FILE_PATH        SD_LOG_DIR_PATH "/runtime.log"
+#if CONFIG_DESK_CLOCK_SD_LOG_ENABLE
+#define SD_LOG_PIN_MISO         ((gpio_num_t)CONFIG_DESK_CLOCK_SD_LOG_PIN_MISO)
+#define SD_LOG_PIN_MOSI         ((gpio_num_t)CONFIG_DESK_CLOCK_SD_LOG_PIN_MOSI)
+#define SD_LOG_PIN_SCLK         ((gpio_num_t)CONFIG_DESK_CLOCK_SD_LOG_PIN_SCLK)
+#define SD_LOG_PIN_CS           ((gpio_num_t)CONFIG_DESK_CLOCK_SD_LOG_PIN_CS)
+#define SD_LOG_FREQ_MHZ         CONFIG_DESK_CLOCK_SD_LOG_FREQ_MHZ
+#else
+#define SD_LOG_PIN_MISO         GPIO_NUM_NC
+#define SD_LOG_PIN_MOSI         GPIO_NUM_NC
+#define SD_LOG_PIN_SCLK         GPIO_NUM_NC
+#define SD_LOG_PIN_CS           GPIO_NUM_NC
+#define SD_LOG_FREQ_MHZ         10
+#endif
+
+/* ================================================================
  * Log tags
  * ================================================================ */
 #define TAG_MAIN        "MAIN"
@@ -164,6 +184,7 @@
 #define TAG_DHT11       "DHT11"
 #define TAG_HISTORY     "HISTORY"
 #define TAG_WEB         "WEB"
+#define TAG_SDLOG       "SDLOG"
 
 /* ================================================================
  * Web dashboard
