@@ -8,7 +8,7 @@
  * 电源：5V（ESP32 3.3V 输出可直接驱动 5V TTL 输入）
  *
  * 引脚连接（默认，可在 Kconfig 中修改）：
- *   ESP32 GPIO12 -> LCD D0
+ *   ESP32 GPIO32 -> LCD D0
  *   ESP32 GPIO13 -> LCD D1
  *   ESP32 GPIO14 -> LCD D2
  *   ESP32 GPIO15 -> LCD D3
@@ -40,7 +40,7 @@ extern "C" {
 #ifdef CONFIG_LCD_PIN_D0
 #define LCD_PIN_D0   CONFIG_LCD_PIN_D0
 #else
-#define LCD_PIN_D0   12
+#define LCD_PIN_D0   32
 #endif
 #ifdef CONFIG_LCD_PIN_D1
 #define LCD_PIN_D1   CONFIG_LCD_PIN_D1

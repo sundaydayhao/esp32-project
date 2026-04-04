@@ -16,6 +16,12 @@ static portMUX_TYPE s_dht11_mux = portMUX_INITIALIZER_UNLOCKED;
 static dht11_reading_t s_last_reading;
 static uint64_t s_last_read_us;
 
+#define DHT11_RESPONSE_TIMEOUT_US   200
+#define DHT11_BIT_HIGH_TIMEOUT_US   120
+#define DHT11_BIT_LOW_TIMEOUT_US    200
+#define DHT11_MAX_RETRIES           3
+#define DHT11_RETRY_DELAY_MS        30
+
 static bool wait_for_level(int level, uint32_t timeout_us)
 {
     while (timeout_us-- > 0) {
@@ -62,15 +68,15 @@ esp_err_t dht11_read(dht11_reading_t *out)
 
     portENTER_CRITICAL(&s_dht11_mux);
 
-    if (!wait_for_level(0, 120) ||
-        !wait_for_level(1, 120) ||
-        !wait_for_level(0, 120)) {
+    if (!wait_for_level(0, DHT11_RESPONSE_TIMEOUT_US) ||
+        !wait_for_level(1, DHT11_RESPONSE_TIMEOUT_US) ||
+        !wait_for_level(0, DHT11_RESPONSE_TIMEOUT_US)) {
         portEXIT_CRITICAL(&s_dht11_mux);
         return ESP_ERR_TIMEOUT;
     }
 
     for (int bit = 0; bit < 40; ++bit) {
-        if (!wait_for_level(1, 80)) {
+        if (!wait_for_level(1, DHT11_BIT_HIGH_TIMEOUT_US)) {
             portEXIT_CRITICAL(&s_dht11_mux);
             return ESP_ERR_TIMEOUT;
         }
@@ -81,7 +87,7 @@ esp_err_t dht11_read(dht11_reading_t *out)
             data[bit / 8] |= 1U;
         }
 
-        if (!wait_for_level(0, 120)) {
+        if (!wait_for_level(0, DHT11_BIT_LOW_TIMEOUT_US)) {
             portEXIT_CRITICAL(&s_dht11_mux);
             return ESP_ERR_TIMEOUT;
         }
@@ -124,9 +130,29 @@ void dht11_task(void *arg)
 
     while (1) {
         dht11_reading_t reading = {0};
-        esp_err_t ret = dht11_read(&reading);
+        esp_err_t ret = ESP_FAIL;
+
+        for (int attempt = 1; attempt <= DHT11_MAX_RETRIES; ++attempt) {
+            ret = dht11_read(&reading);
+            if (ret == ESP_OK) {
+                break;
+            }
+
+            if (attempt < DHT11_MAX_RETRIES) {
+                vTaskDelay(pdMS_TO_TICKS(DHT11_RETRY_DELAY_MS));
+            }
+        }
+
         if (ret != ESP_OK) {
-            ESP_LOGW(TAG, "DHT11 read failed: %s", esp_err_to_name(ret));
+            if (s_last_reading.valid) {
+                ESP_LOGW(TAG, "DHT11 read failed after %d attempts: %s, keep last=%dC %u%% age=%lus",
+                         DHT11_MAX_RETRIES, esp_err_to_name(ret),
+                         (int)s_last_reading.temperature_c, (unsigned)s_last_reading.humidity_pct,
+                         (unsigned long)((esp_timer_get_time() - s_last_read_us) / 1000000ULL));
+            } else {
+                ESP_LOGW(TAG, "DHT11 read failed after %d attempts: %s",
+                         DHT11_MAX_RETRIES, esp_err_to_name(ret));
+            }
         } else {
             ESP_LOGI(TAG, "Indoor: %dC %u%%", (int)reading.temperature_c, (unsigned)reading.humidity_pct);
         }

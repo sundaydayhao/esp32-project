@@ -11,7 +11,7 @@ extern "C" {
 esp_err_t audio_output_init(void);
 esp_err_t audio_output_deinit(void);
 bool audio_output_is_ready(void);
-esp_err_t audio_output_play_beijing_time_announcement(int hour, int minute);
+esp_err_t audio_output_play_beijing_hour_announcement(int hour);
 
 #ifdef __cplusplus
 }

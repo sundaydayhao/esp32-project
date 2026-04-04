@@ -19,7 +19,7 @@ menu "LCD12864 Clock Configuration"
 
         config LCD_PIN_D0
             int "LCD D0 GPIO"
-            default 12
+            default 32
             help
                 LCD12864 数据总线 D0 引脚
 
@@ -153,7 +153,7 @@ menu "LCD12864 Clock Configuration"
 
         config AUDIO_ANNOUNCE_END_HOUR
             int "Hourly announce end hour"
-            default 21
+            default 20
             range 0 23
             help
                 Latest hour for hourly voice announcement.
