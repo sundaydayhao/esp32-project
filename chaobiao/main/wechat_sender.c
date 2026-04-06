@@ -18,8 +18,6 @@
 static const char *TAG = "wechat_sender";
 static char s_http_response[512];
 static size_t s_http_response_len = 0;
-static const int NORMALIZED_JPEG_QUALITY = 92;
-
 #define WECOM_API_URL \
     "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=" CONFIG_WECOM_WEBHOOK_KEY
 
@@ -105,14 +103,14 @@ static void *alloc_image_buffer(size_t size)
     return buf;
 }
 
-static bool image_is_png(const uint8_t *data, size_t len)
+static void *realloc_image_buffer(void *ptr, size_t size)
 {
-    static const uint8_t png_signature[] = {
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
-    };
+    void *buf = heap_caps_realloc(ptr, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (buf == NULL) {
+        buf = realloc(ptr, size);
+    }
 
-    return len >= sizeof(png_signature) &&
-           memcmp(data, png_signature, sizeof(png_signature)) == 0;
+    return buf;
 }
 
 static bool image_is_jpeg(const uint8_t *data, size_t len)
@@ -149,7 +147,7 @@ static size_t jpeg_buffer_append(void *arg, size_t index, const void *data, size
             new_capacity *= 2;
         }
 
-        uint8_t *new_data = (uint8_t *)realloc(buffer->data, new_capacity);
+        uint8_t *new_data = (uint8_t *)realloc_image_buffer(buffer->data, new_capacity);
         if (new_data == NULL) {
             return 0;
         }
@@ -200,93 +198,229 @@ static esp_err_t encode_frame_to_jpeg_dynamic(uint8_t *src,
 }
 
 
-static esp_err_t decode_jpeg_to_rgb888_safely(const camera_fb_t *frame,
-                                              uint8_t **rgb_out,
-                                              size_t *rgb_len_out,
-                                              uint16_t *width_out,
-                                              uint16_t *height_out)
+#ifdef CONFIG_WECHAT_PUSH_WECOM
+static const size_t WECOM_IMAGE_BASE64_LIMIT_BYTES = 2 * 1024 * 1024;
+
+typedef struct {
+    esp_jpeg_image_scale_t scale;
+    uint8_t quality;
+} wecom_jpeg_candidate_t;
+
+static const wecom_jpeg_candidate_t s_wecom_jpeg_candidates[] = {
+    {JPEG_IMAGE_SCALE_0, 85},
+    {JPEG_IMAGE_SCALE_0, 72},
+    {JPEG_IMAGE_SCALE_1_2, 85},
+    {JPEG_IMAGE_SCALE_1_2, 72},
+    {JPEG_IMAGE_SCALE_1_4, 85},
+    {JPEG_IMAGE_SCALE_1_4, 72},
+};
+
+static size_t base64_encoded_length(size_t binary_len)
 {
-    if (frame == NULL || rgb_out == NULL || rgb_len_out == NULL ||
-        width_out == NULL || height_out == NULL) {
+    if (binary_len > SIZE_MAX - 2) {
+        return SIZE_MAX;
+    }
+
+    return ((binary_len + 2) / 3) * 4;
+}
+
+static bool wecom_image_size_allowed(size_t image_len)
+{
+    return base64_encoded_length(image_len) <= WECOM_IMAGE_BASE64_LIMIT_BYTES;
+}
+
+static uint16_t jpeg_scaled_dimension(uint16_t value, esp_jpeg_image_scale_t scale)
+{
+    uint16_t divisor = 1;
+
+    switch (scale) {
+        case JPEG_IMAGE_SCALE_1_2:
+            divisor = 2;
+            break;
+        case JPEG_IMAGE_SCALE_1_4:
+            divisor = 4;
+            break;
+        case JPEG_IMAGE_SCALE_1_8:
+            divisor = 8;
+            break;
+        case JPEG_IMAGE_SCALE_0:
+        default:
+            divisor = 1;
+            break;
+    }
+
+    if (value == 0) {
+        return 0;
+    }
+
+    value = (uint16_t)(value / divisor);
+    return value > 0 ? value : 1;
+}
+
+static esp_err_t jpeg_get_dimensions_with_fallback(const camera_fb_t *frame,
+                                                   esp_jpeg_image_scale_t scale,
+                                                   uint16_t *width_out,
+                                                   uint16_t *height_out)
+{
+    if (frame == NULL || width_out == NULL || height_out == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    *rgb_out = NULL;
-    *rgb_len_out = 0;
     *width_out = 0;
     *height_out = 0;
 
     esp_jpeg_image_cfg_t jpeg_cfg = {
         .indata = frame->buf,
         .indata_size = frame->len,
-        .out_format = JPEG_IMAGE_FORMAT_RGB888,
-        .out_scale = JPEG_IMAGE_SCALE_0,
+        .out_format = JPEG_IMAGE_FORMAT_RGB565,
+        .out_scale = scale,
         .flags.swap_color_bytes = 0,
         .advanced.working_buffer = NULL,
         .advanced.working_buffer_size = 0,
     };
     esp_jpeg_image_output_t jpeg_info = {0};
-
     esp_err_t ret = esp_jpeg_get_image_info(&jpeg_cfg, &jpeg_info);
+
+    if (ret == ESP_OK && jpeg_info.width != 0 && jpeg_info.height != 0) {
+        *width_out = jpeg_info.width;
+        *height_out = jpeg_info.height;
+        return ESP_OK;
+    }
+
+    if (frame->width == 0 || frame->height == 0) {
+        ESP_LOGE(TAG, "Failed to parse JPEG dimensions: %s", esp_err_to_name(ret));
+        return ret != ESP_OK ? ret : ESP_FAIL;
+    }
+
+    *width_out = jpeg_scaled_dimension((uint16_t)frame->width, scale);
+    *height_out = jpeg_scaled_dimension((uint16_t)frame->height, scale);
+    ESP_LOGW(TAG,
+             "JPEG header parsing failed (%s), falling back to frame metadata %zux%zu",
+             esp_err_to_name(ret), frame->width, frame->height);
+    return ESP_OK;
+}
+
+static esp_err_t reencode_jpeg_frame_for_wecom(const camera_fb_t *frame,
+                                               esp_jpeg_image_scale_t scale,
+                                               uint8_t quality,
+                                               uint8_t **image_out,
+                                               size_t *image_len_out)
+{
+    if (frame == NULL || image_out == NULL || image_len_out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *image_out = NULL;
+    *image_len_out = 0;
+
     uint16_t decoded_width = 0;
     uint16_t decoded_height = 0;
-
-    if (ret == ESP_OK &&
-        jpeg_info.width != 0 &&
-        jpeg_info.height != 0 &&
-        jpeg_info.output_len != 0) {
-        decoded_width = jpeg_info.width;
-        decoded_height = jpeg_info.height;
-
-        if (frame->width != 0 && frame->height != 0 &&
-            (jpeg_info.width != frame->width || jpeg_info.height != frame->height)) {
-            ESP_LOGW(TAG, "JPEG header size mismatch: header=%ux%u frame=%zux%zu",
-                     jpeg_info.width, jpeg_info.height, frame->width, frame->height);
-        }
-    } else {
-        if (frame->width == 0 || frame->height == 0) {
-            ESP_LOGE(TAG,
-                     "Failed to parse JPEG header and frame metadata is invalid: %s",
-                     esp_err_to_name(ret));
-            return ret != ESP_OK ? ret : ESP_FAIL;
-        }
-
-        decoded_width = (uint16_t)frame->width;
-        decoded_height = (uint16_t)frame->height;
-        ESP_LOGW(TAG,
-                 "JPEG header parsing failed (%s), falling back to frame metadata %zux%zu",
-                 esp_err_to_name(ret), frame->width, frame->height);
+    esp_err_t ret = jpeg_get_dimensions_with_fallback(frame, scale, &decoded_width, &decoded_height);
+    if (ret != ESP_OK) {
+        return ret;
     }
 
     size_t pixel_count = (size_t)decoded_width * (size_t)decoded_height;
-    if (pixel_count == 0 || pixel_count > SIZE_MAX / 3) {
-        ESP_LOGE(TAG, "Invalid RGB buffer size for normalization: %ux%u",
+    if (pixel_count == 0 || pixel_count > SIZE_MAX / 2) {
+        ESP_LOGE(TAG, "Invalid RGB565 buffer size for normalization: %ux%u",
                  decoded_width, decoded_height);
         return ESP_FAIL;
     }
 
-    size_t rgb_buf_len = pixel_count * 3;
-    uint8_t *rgb_buf = alloc_image_buffer(rgb_buf_len);
-    if (rgb_buf == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate RGB buffer for JPEG normalization: %zu bytes",
-                 rgb_buf_len);
+    size_t rgb565_len = pixel_count * 2;
+    uint8_t *rgb565_buf = alloc_image_buffer(rgb565_len);
+    if (rgb565_buf == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate RGB565 buffer for normalization: %zu bytes",
+                 rgb565_len);
         return ESP_ERR_NO_MEM;
     }
 
-    if (!fmt2rgb888(frame->buf, frame->len, frame->format, rgb_buf)) {
+    if (!jpg2rgb565(frame->buf, frame->len, rgb565_buf, scale)) {
         ESP_LOGE(TAG, "Failed to decode JPEG for normalization");
-        free(rgb_buf);
+        free(rgb565_buf);
         return ESP_FAIL;
     }
 
-    *rgb_out = rgb_buf;
-    *rgb_len_out = rgb_buf_len;
-    *width_out = decoded_width;
-    *height_out = decoded_height;
+    ret = encode_frame_to_jpeg_dynamic(rgb565_buf, rgb565_len,
+                                       decoded_width, decoded_height,
+                                       PIXFORMAT_RGB565, quality,
+                                       image_out, image_len_out);
+    free(rgb565_buf);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ESP_LOGI(TAG,
+             "Re-encoded JPEG candidate: %ux%u quality=%u size=%zu bytes base64=%zu bytes",
+             decoded_width, decoded_height, quality, *image_len_out,
+             base64_encoded_length(*image_len_out));
     return ESP_OK;
 }
 
-#ifdef CONFIG_WECHAT_PUSH_WECOM
+static esp_err_t prepare_frame_for_wecom_upload(const camera_fb_t *frame,
+                                                uint8_t **image_out,
+                                                size_t *image_len_out)
+{
+    if (frame == NULL || image_out == NULL || image_len_out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *image_out = NULL;
+    *image_len_out = 0;
+
+    if (frame->format == PIXFORMAT_JPEG) {
+        for (size_t i = 0; i < sizeof(s_wecom_jpeg_candidates) / sizeof(s_wecom_jpeg_candidates[0]); i++) {
+            const wecom_jpeg_candidate_t candidate = s_wecom_jpeg_candidates[i];
+            uint8_t *candidate_image = NULL;
+            size_t candidate_len = 0;
+
+            esp_err_t ret = reencode_jpeg_frame_for_wecom(frame,
+                                                          candidate.scale,
+                                                          candidate.quality,
+                                                          &candidate_image,
+                                                          &candidate_len);
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "JPEG fallback candidate failed: scale=%d quality=%u err=%s",
+                         candidate.scale, candidate.quality, esp_err_to_name(ret));
+                continue;
+            }
+
+            if (wecom_image_size_allowed(candidate_len)) {
+                *image_out = candidate_image;
+                *image_len_out = candidate_len;
+                return ESP_OK;
+            }
+
+            ESP_LOGW(TAG,
+                     "JPEG fallback candidate still too large: scale=%d quality=%u size=%zu bytes base64=%zu bytes",
+                     candidate.scale, candidate.quality, candidate_len,
+                     base64_encoded_length(candidate_len));
+            free(candidate_image);
+        }
+
+        ESP_LOGE(TAG, "Unable to fit JPEG into WeCom upload size limit after recompression");
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    if (encode_frame_to_jpeg_dynamic(frame->buf, frame->len,
+                                     (uint16_t)frame->width, (uint16_t)frame->height,
+                                     frame->format, 85,
+                                     image_out, image_len_out) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert frame format %d to JPEG", frame->format);
+        return ESP_FAIL;
+    }
+
+    if (!wecom_image_size_allowed(*image_len_out)) {
+        ESP_LOGE(TAG, "Converted non-JPEG frame is too large for WeCom upload");
+        free(*image_out);
+        *image_out = NULL;
+        *image_len_out = 0;
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    return ESP_OK;
+}
+
 
 static esp_err_t validate_wecom_webhook_config(void)
 {
@@ -354,57 +488,7 @@ static esp_err_t normalize_frame_for_wecom(const camera_fb_t *frame,
                                            uint8_t **image_out,
                                            size_t *image_len_out)
 {
-    if (frame == NULL || image_out == NULL || image_len_out == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    *image_out = NULL;
-    *image_len_out = 0;
-
-    uint8_t *normalized = NULL;
-    size_t normalized_len = 0;
-
-    if (frame->format == PIXFORMAT_JPEG) {
-        uint8_t *rgb_buf = NULL;
-        size_t rgb_buf_len = 0;
-        uint16_t decoded_width = 0;
-        uint16_t decoded_height = 0;
-        esp_err_t ret = decode_jpeg_to_rgb888_safely(
-            frame, &rgb_buf, &rgb_buf_len, &decoded_width, &decoded_height);
-        if (ret != ESP_OK) {
-            return ret;
-        }
-
-        if (encode_frame_to_jpeg_dynamic(rgb_buf, rgb_buf_len,
-                                         decoded_width, decoded_height,
-                                         PIXFORMAT_RGB888, NORMALIZED_JPEG_QUALITY,
-                                         &normalized, &normalized_len) != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to re-encode normalized JPEG");
-            free(rgb_buf);
-            return ESP_FAIL;
-        }
-
-        free(rgb_buf);
-    } else {
-        if (encode_frame_to_jpeg_dynamic(frame->buf, frame->len,
-                                         (uint16_t)frame->width, (uint16_t)frame->height,
-                                         frame->format, NORMALIZED_JPEG_QUALITY,
-                                         &normalized, &normalized_len) != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to convert frame format %d to JPEG", frame->format);
-            return ESP_FAIL;
-        }
-    }
-
-    if (!image_is_jpeg(normalized, normalized_len)) {
-        ESP_LOGE(TAG, "Normalized image is not a valid JPEG");
-        free(normalized);
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "Normalized frame for WeCom, size=%zu bytes", normalized_len);
-    *image_out = normalized;
-    *image_len_out = normalized_len;
-    return ESP_OK;
+    return prepare_frame_for_wecom_upload(frame, image_out, image_len_out);
 }
 
 static esp_err_t wecom_send_image_bytes(const uint8_t *image_data,
@@ -420,11 +504,10 @@ static esp_err_t wecom_send_image_bytes(const uint8_t *image_data,
     calc_md5_hex(image_data, image_len, md5_hex);
     ESP_LOGI(TAG, "Image MD5: %s", md5_hex);
 
-    size_t base64_len = 0;
-    mbedtls_base64_encode(NULL, 0, &base64_len, image_data, image_len);
+    size_t base64_len = base64_encoded_length(image_len);
     ESP_LOGI(TAG, "Image size: %zu bytes, base64 size: %zu bytes", image_len, base64_len);
 
-    if (base64_len > 2 * 1024 * 1024) {
+    if (base64_len > WECOM_IMAGE_BASE64_LIMIT_BYTES) {
         ESP_LOGE(TAG, "Image is too large after base64 encoding: %zu bytes", base64_len);
         return ESP_ERR_INVALID_SIZE;
     }
@@ -661,18 +744,9 @@ esp_err_t wechat_send_camera_frame(const camera_fb_t *frame)
              frame->width, frame->height, frame->format, frame->len);
 
 #ifdef CONFIG_WECHAT_PUSH_WECOM
-    if (frame->format == PIXFORMAT_JPEG) {
-        long errcode = LONG_MIN;
-        esp_err_t ret = wecom_send_image_bytes(frame->buf, frame->len, &errcode);
-        if (ret == ESP_OK || errcode != 40123) {
-            return ret;
-        }
-
-        ESP_LOGW(TAG, "WeCom rejected the raw image format, normalizing JPEG and retrying");
-    }
-
     uint8_t *normalized = NULL;
     size_t normalized_len = 0;
+    ESP_LOGI(TAG, "Normalizing frame for WeCom upload");
     esp_err_t ret = normalize_frame_for_wecom(frame, &normalized, &normalized_len);
     if (ret != ESP_OK) {
         return ret;

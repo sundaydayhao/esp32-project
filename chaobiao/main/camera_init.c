@@ -119,21 +119,21 @@ static framesize_t camera_select_profile_frame_size(framesize_t configured,
         }
     }
 
-    if (recovery_stage == CAMERA_RECOVERY_STAGE_CONSERVATIVE ||
-        recovery_stage == CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK) {
+    if (recovery_stage == CAMERA_RECOVERY_STAGE_CONSERVATIVE) {
+        if (configured > FRAMESIZE_SVGA) {
+            return FRAMESIZE_SVGA;
+        }
+    }
+
+    if (recovery_stage == CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK) {
         if (configured > FRAMESIZE_QVGA) {
             return FRAMESIZE_QVGA;
         }
     }
 
     if (recovery_stage == CAMERA_RECOVERY_STAGE_LOW_XCLK &&
-        configured > FRAMESIZE_CIF) {
-        return FRAMESIZE_CIF;
-    }
-
-    if (recovery_stage == CAMERA_RECOVERY_STAGE_PRIMARY &&
-        configured > FRAMESIZE_VGA) {
-        return FRAMESIZE_VGA;
+        configured > FRAMESIZE_XGA) {
+        return FRAMESIZE_XGA;
     }
 
     if (recovery_stage > CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK &&
@@ -144,8 +144,13 @@ static framesize_t camera_select_profile_frame_size(framesize_t configured,
     return configured;
 }
 
-static int camera_select_profile_xclk(int recovery_stage)
+static int camera_select_profile_xclk(int recovery_stage, framesize_t frame_size)
 {
+    if (recovery_stage == CAMERA_RECOVERY_STAGE_PRIMARY &&
+        frame_size >= FRAMESIZE_XGA) {
+        return CAMERA_XCLK_FREQ_HZ_FALLBACK;
+    }
+
     return recovery_stage == CAMERA_RECOVERY_STAGE_PRIMARY ?
            CAMERA_XCLK_FREQ_HZ_PRIMARY :
            CAMERA_XCLK_FREQ_HZ_FALLBACK;
@@ -203,7 +208,7 @@ static camera_config_t camera_build_config(int recovery_stage)
     config.pin_sccb_scl = CONFIG_CAM_PIN_SIOC;
     config.pin_pwdn = CONFIG_CAM_PIN_PWDN;
     config.pin_reset = CONFIG_CAM_PIN_RESET;
-    config.xclk_freq_hz = camera_select_profile_xclk(recovery_stage);
+    config.xclk_freq_hz = camera_select_profile_xclk(recovery_stage, frame_size);
     config.pixel_format = camera_select_profile_pixel_format(recovery_stage);
     config.frame_size = frame_size;
     config.jpeg_quality = camera_select_profile_jpeg_quality(recovery_stage);
@@ -385,7 +390,7 @@ static esp_err_t camera_apply_profile(int recovery_stage)
 
 esp_err_t camera_init(void)
 {
-    return camera_apply_profile(CAMERA_RECOVERY_STAGE_RGB565_FALLBACK);
+    return camera_apply_profile(CAMERA_RECOVERY_STAGE_PRIMARY);
 }
 
 camera_fb_t *camera_capture(void)

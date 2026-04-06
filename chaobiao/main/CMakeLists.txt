@@ -2,7 +2,6 @@ idf_component_register(
     SRCS
         "main.c"
         "camera_init.c"
-        "flash_led.c"
         "wifi_connect.c"
         "wechat_sender.c"
     INCLUDE_DIRS

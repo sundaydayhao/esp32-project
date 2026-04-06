@@ -1,5 +1,4 @@
 #include "camera_init.h"
-#include "flash_led.h"
 #include "sdkconfig.h"
 #include "wechat_sender.h"
 #include "wifi_connect.h"
@@ -38,9 +37,7 @@ static void do_capture_and_send(void)
         }
     }
 
-    flash_led_capture_begin();
     camera_fb_t *fb = camera_capture();
-    flash_led_capture_end();
     if (fb == NULL) {
         ESP_LOGE(TAG, "Camera capture failed");
         wechat_send_text("Camera capture failed. Check the ESP32-CAM camera connection.");
@@ -62,7 +59,7 @@ static void do_capture_and_send(void)
 
         ESP_LOGW(TAG, "Image is too large for the current upload path");
         snprintf(msg, sizeof(msg),
-                 "Image too large: %zu KB. Reduce frame size or JPEG quality.",
+                 "Upload image too large after normalization. Captured JPEG: %zu KB.",
                  fb->len / 1024);
         wechat_send_text(msg);
     } else {
@@ -130,11 +127,6 @@ void app_main(void)
             ESP_LOGE(TAG, "Camera fault, system halted");
             vTaskDelay(pdMS_TO_TICKS(10000));
         }
-    }
-
-    ret = flash_led_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Flash LED init failed: %s (0x%x)", esp_err_to_name(ret), ret);
     }
 
     ESP_LOGI(TAG, "========================================");
