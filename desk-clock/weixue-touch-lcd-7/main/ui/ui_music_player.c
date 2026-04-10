@@ -179,7 +179,7 @@ esp_err_t ui_music_player_create(lv_obj_t *parent)
     int btn_spacing = 70;
 
     // Previous button
-    s_music_ui.btn_prev = lv_btn_create(s_music_ui.panel);
+    s_music_ui.btn_prev = lv_button_create(s_music_ui.panel);
     lv_obj_set_size(s_music_ui.btn_prev, 50, 50);
     lv_obj_set_pos(s_music_ui.btn_prev, btn_start_x, btn_y);
     style_music_button(s_music_ui.btn_prev, lv_color_hex(0x68C1FF));
@@ -187,12 +187,12 @@ esp_err_t ui_music_player_create(lv_obj_t *parent)
 
     lv_obj_t *prev_label = lv_label_create(s_music_ui.btn_prev);
     lv_obj_center(prev_label);
-    lv_obj_set_style_text_font(prev_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(prev_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(prev_label, lv_color_hex(0x68C1FF), 0);
     lv_label_set_text(prev_label, LV_SYMBOL_PREV);
 
     // Play/Pause button
-    s_music_ui.btn_play = lv_btn_create(s_music_ui.panel);
+    s_music_ui.btn_play = lv_button_create(s_music_ui.panel);
     lv_obj_set_size(s_music_ui.btn_play, 60, 60);
     lv_obj_set_pos(s_music_ui.btn_play, btn_start_x + btn_spacing, btn_y - 5);
     style_music_button(s_music_ui.btn_play, lv_color_hex(0xFFB057));
@@ -200,12 +200,12 @@ esp_err_t ui_music_player_create(lv_obj_t *parent)
 
     lv_obj_t *play_label = lv_label_create(s_music_ui.btn_play);
     lv_obj_center(play_label);
-    lv_obj_set_style_text_font(play_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(play_label, &lv_font_montserrat_32, 0);
     lv_obj_set_style_text_color(play_label, lv_color_hex(0xFFB057), 0);
     lv_label_set_text(play_label, LV_SYMBOL_PLAY);
 
     // Next button
-    s_music_ui.btn_next = lv_btn_create(s_music_ui.panel);
+    s_music_ui.btn_next = lv_button_create(s_music_ui.panel);
     lv_obj_set_size(s_music_ui.btn_next, 50, 50);
     lv_obj_set_pos(s_music_ui.btn_next, btn_start_x + btn_spacing * 2, btn_y);
     style_music_button(s_music_ui.btn_next, lv_color_hex(0x68C1FF));
@@ -213,7 +213,7 @@ esp_err_t ui_music_player_create(lv_obj_t *parent)
 
     lv_obj_t *next_label = lv_label_create(s_music_ui.btn_next);
     lv_obj_center(next_label);
-    lv_obj_set_style_text_font(next_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(next_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(next_label, lv_color_hex(0x68C1FF), 0);
     lv_label_set_text(next_label, LV_SYMBOL_NEXT);
 
@@ -231,7 +231,7 @@ esp_err_t ui_music_player_create(lv_obj_t *parent)
 
     lv_obj_t *vol_icon = lv_label_create(s_music_ui.panel);
     lv_obj_set_pos(vol_icon, btn_start_x - 15, btn_y + 60);
-    lv_obj_set_style_text_font(vol_icon, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(vol_icon, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(vol_icon, lv_color_hex(0x68C1FF), 0);
     lv_label_set_text(vol_icon, LV_SYMBOL_VOLUME_MAX);
 

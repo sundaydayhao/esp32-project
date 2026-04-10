@@ -66,6 +66,21 @@ static void extract_title_from_filename(const char *filename, char *title, size_
     title[len] = '\0';
 }
 
+static bool build_audio_path(const char *filename, char *path, size_t path_size)
+{
+    const size_t mount_len = sizeof(SD_MOUNT_POINT) - 1;
+    const size_t name_len = strlen(filename);
+
+    if (mount_len + 1 + name_len >= path_size) {
+        return false;
+    }
+
+    memcpy(path, SD_MOUNT_POINT, mount_len);
+    path[mount_len] = '/';
+    memcpy(path + mount_len + 1, filename, name_len + 1);
+    return true;
+}
+
 static esp_err_t mount_sd_card(void)
 {
     esp_err_t ret;
@@ -237,9 +252,12 @@ esp_err_t audio_player_scan_files(void)
 
     while ((entry = readdir(dir)) != NULL && s_playlist.count < AUDIO_MAX_PLAYLIST_SIZE) {
         if (entry->d_type == DT_REG && is_audio_file(entry->d_name)) {
-            snprintf(s_playlist.files[s_playlist.count],
-                     AUDIO_MAX_FILENAME_LEN,
-                     "%s/%s", SD_MOUNT_POINT, entry->d_name);
+            if (!build_audio_path(entry->d_name,
+                                  s_playlist.files[s_playlist.count],
+                                  AUDIO_MAX_FILENAME_LEN)) {
+                ESP_LOGW(TAG, "Skip audio file with long path: %s", entry->d_name);
+                continue;
+            }
             s_playlist.count++;
             ESP_LOGI(TAG, "Found audio file: %s", entry->d_name);
         }
