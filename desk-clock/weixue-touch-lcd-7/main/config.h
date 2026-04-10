@@ -13,17 +13,9 @@
 #define DEVICE_NAME         "ESP32-S3 Desk Clock"
 
 /* ================================================================
- * Display / board selection
+ * Display / Waveshare ESP32-S3-Touch-LCD-7
  * ================================================================ */
-#if !defined(CONFIG_DESK_CLOCK_BOARD_WAVESHARE_7) && !defined(CONFIG_DESK_CLOCK_BOARD_NT35510)
-#define CONFIG_DESK_CLOCK_BOARD_WAVESHARE_7 1
-#endif
-
-#if CONFIG_DESK_CLOCK_BOARD_WAVESHARE_7
-
 #define DISPLAY_BOARD_NAME          "Waveshare ESP32-S3-Touch-LCD-7"
-#define LCD_USE_RGB_INTERFACE       1
-#define LCD_USE_I80_INTERFACE       0
 
 #define LCD_H_RES                   800
 #define LCD_V_RES                   480
@@ -59,62 +51,6 @@
 #define LCD_PIN_D15                 GPIO_NUM_40
 
 #define LCD_NUM_FB                  2
-
-#elif CONFIG_DESK_CLOCK_BOARD_NT35510
-
-#define DISPLAY_BOARD_NAME          "Generic NT35510 I80 Board"
-#define LCD_USE_RGB_INTERFACE       0
-#define LCD_USE_I80_INTERFACE       1
-
-#define LCD_H_RES                   CONFIG_DESK_CLOCK_NT35510_H_RES
-#define LCD_V_RES                   CONFIG_DESK_CLOCK_NT35510_V_RES
-#define LCD_NUM_FB                  2
-
-#define LCD_I80_PIXEL_CLOCK_HZ      CONFIG_DESK_CLOCK_NT35510_PIXEL_CLOCK_HZ
-#define LCD_I80_BUS_WIDTH           CONFIG_DESK_CLOCK_NT35510_I80_BUS_WIDTH
-#define LCD_I80_DRAW_BUF_LINES      CONFIG_DESK_CLOCK_NT35510_DRAW_BUF_LINES
-#define LCD_I80_CMD_BITS            16
-#define LCD_I80_PARAM_BITS          16
-
-#define LCD_I80_PIN_WR              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_WR)
-#define LCD_I80_PIN_CS              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_CS)
-#define LCD_I80_PIN_DC              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_DC)
-#define LCD_I80_PIN_RST             ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_RST)
-#define LCD_I80_PIN_BACKLIGHT       ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_BK_LIGHT)
-#define LCD_I80_PIN_POWER           ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_POWER)
-
-#define LCD_I80_PIN_D0              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D0)
-#define LCD_I80_PIN_D1              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D1)
-#define LCD_I80_PIN_D2              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D2)
-#define LCD_I80_PIN_D3              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D3)
-#define LCD_I80_PIN_D4              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D4)
-#define LCD_I80_PIN_D5              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D5)
-#define LCD_I80_PIN_D6              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D6)
-#define LCD_I80_PIN_D7              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D7)
-
-#if CONFIG_DESK_CLOCK_NT35510_I80_BUS_WIDTH == 16
-#define LCD_I80_PIN_D8              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D8)
-#define LCD_I80_PIN_D9              ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D9)
-#define LCD_I80_PIN_D10             ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D10)
-#define LCD_I80_PIN_D11             ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D11)
-#define LCD_I80_PIN_D12             ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D12)
-#define LCD_I80_PIN_D13             ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D13)
-#define LCD_I80_PIN_D14             ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D14)
-#define LCD_I80_PIN_D15             ((gpio_num_t)CONFIG_DESK_CLOCK_NT35510_PIN_D15)
-#else
-#define LCD_I80_PIN_D8              GPIO_NUM_NC
-#define LCD_I80_PIN_D9              GPIO_NUM_NC
-#define LCD_I80_PIN_D10             GPIO_NUM_NC
-#define LCD_I80_PIN_D11             GPIO_NUM_NC
-#define LCD_I80_PIN_D12             GPIO_NUM_NC
-#define LCD_I80_PIN_D13             GPIO_NUM_NC
-#define LCD_I80_PIN_D14             GPIO_NUM_NC
-#define LCD_I80_PIN_D15             GPIO_NUM_NC
-#endif
-
-#else
-#error "Unsupported desk clock board selection"
-#endif
 
 #define BOOT_MODE_LCD_DIAGNOSTIC    0
 #define BOOT_MODE_UI_ONLY           1

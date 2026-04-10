@@ -5,10 +5,7 @@
 [![MCU](https://img.shields.io/badge/MCU-ESP32--S3-green)]()
 [![Weather](https://img.shields.io/badge/Weather-QWeather-orange)]()
 
-基于 ESP32-S3 的桌面时钟项目，提供 800x480 大屏时钟界面、Wi-Fi 联网、NTP 自动对时、QWeather 实时天气和 3 日预报，并且已经支持两套显示硬件路径：
-
-- `Waveshare ESP32-S3-Touch-LCD-7`，RGB 屏直刷路径，默认配置
-- `Generic NT35510 I80 Board`，支持 8/16-bit I80 总线，适合通用 NT35510 屏
+基于 ESP32-S3 的桌面时钟项目，当前面向 `Waveshare ESP32-S3-Touch-LCD-7`，提供 800x480 大屏时钟界面、Wi-Fi 联网、NTP 自动对时、QWeather 实时天气和 3 日预报。
 
 当前显示层已经切换到 `LVGL`，UI 包含数字时钟、模拟表盘、状态栏、天气详情卡片和 3 日天气卡片。
 
@@ -26,11 +23,9 @@
 - UI-only 模式，可单独验证 LVGL 渲染链路
 - 配置支持编译期默认值 + NVS 覆盖
 
-## 硬件支持
+## 硬件平台
 
-### 1. Waveshare ESP32-S3-Touch-LCD-7
-
-这是当前默认目标板。
+### Waveshare ESP32-S3-Touch-LCD-7
 
 - 接口：`RGB 16-bit`
 - 分辨率：`800x480`
@@ -40,34 +35,17 @@
 
 默认 RGB 引脚定义位于 [main/config.h](/D:/workspace/esp32_desk_clock/main/config.h)。
 
-### 2. Generic NT35510 I80 Board
-
-新增的通用 `NT35510` 支持通过 `menuconfig` 配置：
-
-- 分辨率
-- I80 像素时钟
-- `8-bit / 16-bit` 总线宽度
-- 颜色顺序 `RGB / BGR`
-- `swap_xy / mirror_x / mirror_y / invert_color`
-- RGB565 字节交换
-- `WR / CS / DC / RST / BK / POWER / D0~D15` 引脚
-
-这一路径使用 `LVGL partial mode`，并按 `draw buffer lines` 分块刷新，更适合通用并口屏。
-
-相关配置入口见 [main/Kconfig.projbuild](/D:/workspace/esp32_desk_clock/main/Kconfig.projbuild)。
-
 ## 软件架构
 
 ```text
 esp32_desk_clock/
 ├── main/
 │   ├── main.c                  # 启动流程与任务创建
-│   ├── config.h                # 固件、板型、网络、天气等全局配置
-│   ├── Kconfig.projbuild       # 板型与 NT35510 参数菜单
+│   ├── config.h                # 固件、显示、网络、天气等全局配置
 │   ├── certs/
 │   │   └── isrg_root_x1.pem    # HTTPS 证书
 │   ├── lcd/
-│   │   ├── lcd_driver.c        # RGB / I80 显示驱动统一封装
+│   │   ├── lcd_driver.c        # Waveshare RGB 显示驱动封装
 │   │   └── waveshare_board.c   # Waveshare 板级控制
 │   ├── net/
 │   │   ├── wifi_manager.c      # Wi-Fi STA
@@ -79,7 +57,6 @@ esp32_desk_clock/
 │       ├── ui_renderer.c       # LVGL UI 与刷新逻辑
 │       └── ui_font_noto_sc_16.c
 ├── sdkconfig.defaults
-├── sdkconfig.nt35510.defaults  # NT35510 构建示例默认值
 └── partitions.csv
 ```
 
@@ -137,7 +114,7 @@ esp32_desk_clock/
 
 ## 构建
 
-### 默认构建：Waveshare 7 寸 RGB 板
+### Waveshare 7 寸 RGB 板
 
 ```powershell
 idf.py set-target esp32s3
@@ -150,49 +127,13 @@ idf.py build
 idf.py -p COMx flash monitor
 ```
 
-### 切换到 NT35510 I80 板
-
-方式一：使用 `menuconfig`
-
-```powershell
-idf.py menuconfig
-```
-
-然后进入 `Desk Clock Hardware`：
-
-- 选择 `Generic NT35510 I80 board`
-- 配置分辨率、总线宽度、时钟、镜像和引脚
-
-方式二：使用示例默认值文件 [sdkconfig.nt35510.defaults](/D:/workspace/esp32_desk_clock/sdkconfig.nt35510.defaults)
-
-```powershell
-$env:SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.nt35510.defaults"
-idf.py build
-```
-
-说明：
-
-- `sdkconfig.nt35510.defaults` 里的引脚仅作为示例，烧录前必须按你的硬件修改
-- 如果仓库里已经存在 `sdkconfig`，则现有 `sdkconfig` 的内容优先
-
-## 显示实现差异
-
-### RGB 路径
+## 显示实现
 
 - 驱动文件：[main/lcd/lcd_driver.c](/D:/workspace/esp32_desk_clock/main/lcd/lcd_driver.c)
 - 使用 `esp_lcd RGB panel`
 - 双全屏帧缓冲
 - `LVGL direct mode`
 - 刷新完成通过 RGB 面板回调通知
-
-### NT35510 I80 路径
-
-- 驱动文件：[main/lcd/lcd_driver.c](/D:/workspace/esp32_desk_clock/main/lcd/lcd_driver.c)
-- 使用 `esp_lcd i80 bus + nt35510 panel`
-- 双分块 DMA buffer
-- `LVGL partial mode`
-- 支持 RGB565 字节交换
-- 支持电源脚和背光脚独立控制
 
 ## 天气接口说明
 
@@ -222,7 +163,6 @@ idf.py build
 ## 已知注意点
 
 - Waveshare 板的背光不是普通 GPIO，实际由 `CH422G` 控制
-- NT35510 示例默认值主要用于快速编译验证，不保证与你的板卡完全匹配
 - 当前天气接口默认更新周期为 `3600s`
 - 当前 UI 天气文字刷新周期为 `30s`，显示的是最近一次缓存结果
 - 旧版 README 中关于“自绘 UI / 旧引脚图 / 30 分钟天气更新”的描述已经不再准确

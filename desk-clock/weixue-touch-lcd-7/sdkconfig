@@ -596,13 +596,6 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
-# Desk Clock Hardware
-#
-CONFIG_DESK_CLOCK_BOARD_WAVESHARE_7=y
-# CONFIG_DESK_CLOCK_BOARD_NT35510 is not set
-# end of Desk Clock Hardware
-
-#
 # Compiler options
 #
 CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
