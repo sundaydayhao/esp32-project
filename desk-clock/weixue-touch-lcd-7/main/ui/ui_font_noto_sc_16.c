@@ -12,6 +12,8 @@
 
 #if UI_FONT_NOTO_SC_16
 
+LV_FONT_DECLARE(lv_font_simsun_16_cjk);
+
 /*-----------------
  *    BITMAPS
  *----------------*/
@@ -2131,7 +2133,7 @@ lv_font_t ui_font_noto_sc_16 = {
 #endif
     .dsc = &font_dsc,          /*The custom font data. Will be accessed by `get_glyph_bitmap/dsc` */
 #if LV_VERSION_CHECK(8, 2, 0) || LVGL_VERSION_MAJOR >= 9
-    .fallback = NULL,
+    .fallback = &lv_font_simsun_16_cjk,
 #endif
     .user_data = NULL,
 };

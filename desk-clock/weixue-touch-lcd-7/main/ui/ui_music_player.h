@@ -14,9 +14,17 @@ extern "C" {
 /**
  * @brief Create music player UI panel
  * @param parent Parent object to attach the music player to
+ * @param x Left position of the panel on screen
+ * @param y Top position of the panel on screen
+ * @param width Panel width
+ * @param height Panel height
  * @return ESP_OK on success
  */
-esp_err_t ui_music_player_create(lv_obj_t *parent);
+esp_err_t ui_music_player_create(lv_obj_t *parent,
+                                 lv_coord_t x,
+                                 lv_coord_t y,
+                                 lv_coord_t width,
+                                 lv_coord_t height);
 
 /**
  * @brief Update music player UI with current status

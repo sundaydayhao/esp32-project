@@ -353,8 +353,8 @@ static void format_forecast_date(const char *date_text, char *out, size_t out_si
 static void create_forecast_card(lv_obj_t *parent, int index, int x)
 {
     lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_size(card, 76, 94);
-    lv_obj_set_pos(card, x, 260);
+    lv_obj_set_size(card, 60, 92);
+    lv_obj_set_pos(card, x, 248);
     style_chip(card, lv_color_hex(0x15273A));
 
     s_ui.forecast_date[index] = lv_label_create(card);
@@ -365,14 +365,14 @@ static void create_forecast_card(lv_obj_t *parent, int index, int x)
 
     s_ui.forecast_cond[index] = lv_label_create(card);
     lv_obj_set_size(s_ui.forecast_cond[index], LV_PCT(100), 20);
-    lv_obj_set_pos(s_ui.forecast_cond[index], 0, 38);
+    lv_obj_set_pos(s_ui.forecast_cond[index], 0, 36);
     style_small_cjk_label(s_ui.forecast_cond[index], lv_color_hex(0xF4F7FB));
     lv_obj_set_style_text_align(s_ui.forecast_cond[index], LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(s_ui.forecast_cond[index], LV_LABEL_LONG_CLIP);
 
     s_ui.forecast_temp[index] = lv_label_create(card);
     lv_obj_set_size(s_ui.forecast_temp[index], LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.forecast_temp[index], 0, 64);
+    lv_obj_set_pos(s_ui.forecast_temp[index], 0, 62);
     lv_obj_set_style_text_font(s_ui.forecast_temp[index], &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(s_ui.forecast_temp[index], lv_color_hex(0x7CD6FF), 0);
     lv_obj_set_style_text_align(s_ui.forecast_temp[index], LV_TEXT_ALIGN_CENTER, 0);
@@ -381,7 +381,7 @@ static void create_forecast_card(lv_obj_t *parent, int index, int x)
 static void create_detail_card(lv_obj_t *parent, lv_obj_t **label, int x, int y)
 {
     lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_size(card, 120, 28);
+    lv_obj_set_size(card, 96, 32);
     lv_obj_set_pos(card, x, y);
     style_chip(card, lv_color_hex(0x111F2D));
 
@@ -394,13 +394,13 @@ static void create_detail_card(lv_obj_t *parent, lv_obj_t **label, int x, int y)
 
 static void create_clock_visual(lv_obj_t *parent)
 {
-    const int face_size = 184;
+    const int face_size = 170;
     const int center = face_size / 2;
-    const int orbit = 72;
+    const int orbit = 66;
 
     lv_obj_t *face = lv_obj_create(parent);
     lv_obj_set_size(face, face_size, face_size);
-    lv_obj_set_pos(face, 246, 42);
+    lv_obj_set_pos(face, 38, 140);
     lv_obj_set_style_radius(face, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(face, 2, 0);
     lv_obj_set_style_border_color(face, lv_color_hex(0x325A76), 0);
@@ -428,34 +428,34 @@ static void create_clock_visual(lv_obj_t *parent)
     }
 
     s_ui.clock_hour_hand = lv_obj_create(face);
-    lv_obj_set_size(s_ui.clock_hour_hand, 6, 46);
-    lv_obj_set_pos(s_ui.clock_hour_hand, center - 3, center - 46);
+    lv_obj_set_size(s_ui.clock_hour_hand, 6, 40);
+    lv_obj_set_pos(s_ui.clock_hour_hand, center - 3, center - 40);
     lv_obj_set_style_radius(s_ui.clock_hour_hand, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(s_ui.clock_hour_hand, 0, 0);
     lv_obj_set_style_bg_color(s_ui.clock_hour_hand, lv_color_hex(0xF7F9FD), 0);
     lv_obj_set_style_bg_opa(s_ui.clock_hour_hand, LV_OPA_COVER, 0);
     lv_obj_set_style_transform_pivot_x(s_ui.clock_hour_hand, 3, 0);
-    lv_obj_set_style_transform_pivot_y(s_ui.clock_hour_hand, 46, 0);
+    lv_obj_set_style_transform_pivot_y(s_ui.clock_hour_hand, 40, 0);
 
     s_ui.clock_minute_hand = lv_obj_create(face);
-    lv_obj_set_size(s_ui.clock_minute_hand, 4, 66);
-    lv_obj_set_pos(s_ui.clock_minute_hand, center - 2, center - 66);
+    lv_obj_set_size(s_ui.clock_minute_hand, 4, 58);
+    lv_obj_set_pos(s_ui.clock_minute_hand, center - 2, center - 58);
     lv_obj_set_style_radius(s_ui.clock_minute_hand, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(s_ui.clock_minute_hand, 0, 0);
     lv_obj_set_style_bg_color(s_ui.clock_minute_hand, lv_color_hex(0x7CD6FF), 0);
     lv_obj_set_style_bg_opa(s_ui.clock_minute_hand, LV_OPA_COVER, 0);
     lv_obj_set_style_transform_pivot_x(s_ui.clock_minute_hand, 2, 0);
-    lv_obj_set_style_transform_pivot_y(s_ui.clock_minute_hand, 66, 0);
+    lv_obj_set_style_transform_pivot_y(s_ui.clock_minute_hand, 58, 0);
 
     s_ui.clock_second_hand = lv_obj_create(face);
-    lv_obj_set_size(s_ui.clock_second_hand, 2, 76);
-    lv_obj_set_pos(s_ui.clock_second_hand, center - 1, center - 76);
+    lv_obj_set_size(s_ui.clock_second_hand, 2, 66);
+    lv_obj_set_pos(s_ui.clock_second_hand, center - 1, center - 66);
     lv_obj_set_style_radius(s_ui.clock_second_hand, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(s_ui.clock_second_hand, 0, 0);
     lv_obj_set_style_bg_color(s_ui.clock_second_hand, lv_color_hex(0xFFB057), 0);
     lv_obj_set_style_bg_opa(s_ui.clock_second_hand, LV_OPA_COVER, 0);
     lv_obj_set_style_transform_pivot_x(s_ui.clock_second_hand, 1, 0);
-    lv_obj_set_style_transform_pivot_y(s_ui.clock_second_hand, 76, 0);
+    lv_obj_set_style_transform_pivot_y(s_ui.clock_second_hand, 66, 0);
 
     lv_obj_t *center_dot = lv_obj_create(face);
     lv_obj_set_size(center_dot, 14, 14);
@@ -469,25 +469,25 @@ static void create_clock_visual(lv_obj_t *parent)
 static void create_weather_visual(lv_obj_t *parent)
 {
     lv_obj_t *wrap = lv_obj_create(parent);
-    lv_obj_set_size(wrap, 112, 108);
-    lv_obj_set_pos(wrap, 152, 8);
+    lv_obj_set_size(wrap, 92, 92);
+    lv_obj_set_pos(wrap, 112, 10);
     lv_obj_set_style_bg_opa(wrap, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(wrap, 0, 0);
     lv_obj_set_style_pad_all(wrap, 0, 0);
 
     s_ui.weather_sun = lv_obj_create(wrap);
-    lv_obj_set_size(s_ui.weather_sun, 34, 34);
-    lv_obj_set_pos(s_ui.weather_sun, 58, 8);
+    lv_obj_set_size(s_ui.weather_sun, 28, 28);
+    lv_obj_set_pos(s_ui.weather_sun, 50, 8);
     lv_obj_set_style_radius(s_ui.weather_sun, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(s_ui.weather_sun, 0, 0);
     lv_obj_set_style_bg_color(s_ui.weather_sun, lv_color_hex(0xFFBF52), 0);
     lv_obj_set_style_bg_opa(s_ui.weather_sun, LV_OPA_COVER, 0);
 
     const int ray_pos[4][4] = {
-        {72, 0, 4, 12},
-        {72, 46, 4, 12},
-        {46, 23, 12, 4},
-        {92, 23, 12, 4},
+        {62, 0, 4, 10},
+        {62, 38, 4, 10},
+        {40, 20, 10, 4},
+        {74, 20, 10, 4},
     };
     for (int i = 0; i < 4; i++) {
         s_ui.weather_rays[i] = lv_obj_create(wrap);
@@ -500,10 +500,10 @@ static void create_weather_visual(lv_obj_t *parent)
     }
 
     const int cloud_pos[4][4] = {
-        {18, 40, 30, 30},
-        {42, 30, 40, 40},
-        {70, 36, 28, 28},
-        {18, 52, 82, 24},
+        {10, 34, 24, 24},
+        {28, 26, 32, 32},
+        {52, 32, 22, 22},
+        {10, 48, 66, 20},
     };
     for (int i = 0; i < 4; i++) {
         s_ui.weather_cloud[i] = lv_obj_create(wrap);
@@ -517,24 +517,24 @@ static void create_weather_visual(lv_obj_t *parent)
 
     for (int i = 0; i < 3; i++) {
         s_ui.weather_rain[i] = lv_obj_create(wrap);
-        lv_obj_set_size(s_ui.weather_rain[i], 4, 18);
-        lv_obj_set_pos(s_ui.weather_rain[i], 34 + (i * 22), 78 + (i % 2) * 4);
+        lv_obj_set_size(s_ui.weather_rain[i], 4, 14);
+        lv_obj_set_pos(s_ui.weather_rain[i], 22 + (i * 16), 68 + (i % 2) * 4);
         lv_obj_set_style_radius(s_ui.weather_rain[i], LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_width(s_ui.weather_rain[i], 0, 0);
         lv_obj_set_style_bg_color(s_ui.weather_rain[i], lv_color_hex(0x5BC0FF), 0);
         lv_obj_set_style_bg_opa(s_ui.weather_rain[i], LV_OPA_COVER, 0);
 
         s_ui.weather_snow[i] = lv_obj_create(wrap);
-        lv_obj_set_size(s_ui.weather_snow[i], 8, 8);
-        lv_obj_set_pos(s_ui.weather_snow[i], 32 + (i * 22), 82 + (i % 2) * 4);
+        lv_obj_set_size(s_ui.weather_snow[i], 6, 6);
+        lv_obj_set_pos(s_ui.weather_snow[i], 20 + (i * 16), 72 + (i % 2) * 4);
         lv_obj_set_style_radius(s_ui.weather_snow[i], LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_width(s_ui.weather_snow[i], 0, 0);
         lv_obj_set_style_bg_color(s_ui.weather_snow[i], lv_color_hex(0xF7FBFF), 0);
         lv_obj_set_style_bg_opa(s_ui.weather_snow[i], LV_OPA_COVER, 0);
 
         s_ui.weather_haze[i] = lv_obj_create(wrap);
-        lv_obj_set_size(s_ui.weather_haze[i], 50, 4);
-        lv_obj_set_pos(s_ui.weather_haze[i], 30 - (i % 2) * 8, 80 + i * 10);
+        lv_obj_set_size(s_ui.weather_haze[i], 38, 4);
+        lv_obj_set_pos(s_ui.weather_haze[i], 22 - (i % 2) * 6, 68 + i * 10);
         lv_obj_set_style_radius(s_ui.weather_haze[i], LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_width(s_ui.weather_haze[i], 0, 0);
         lv_obj_set_style_bg_color(s_ui.weather_haze[i], lv_color_hex(0xAAB9C8), 0);
@@ -546,6 +546,14 @@ static void create_weather_visual(lv_obj_t *parent)
 
 static void create_ui(void)
 {
+    const lv_coord_t content_x = 16;
+    const lv_coord_t content_y = 66;
+    const lv_coord_t panel_h = 398;
+    const lv_coord_t panel_gap = 12;
+    const lv_coord_t clock_panel_w = 280;
+    const lv_coord_t weather_panel_w = 240;
+    const lv_coord_t music_panel_w = 240;
+
     lv_obj_t *screen = lv_screen_active();
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x07111C), 0);
     lv_obj_set_style_bg_grad_color(screen, lv_color_hex(0x10263D), 0);
@@ -561,7 +569,7 @@ static void create_ui(void)
 
     lv_obj_t *glow_right = lv_obj_create(screen);
     lv_obj_set_size(glow_right, 180, 180);
-    lv_obj_set_pos(glow_right, 650, 326);
+    lv_obj_set_pos(glow_right, 606, 278);
     lv_obj_set_style_radius(glow_right, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(glow_right, 0, 0);
     lv_obj_set_style_bg_color(glow_right, lv_color_hex(0xFFB057), 0);
@@ -583,74 +591,80 @@ static void create_ui(void)
     lv_obj_align(s_ui.status_label, LV_ALIGN_LEFT_MID, 0, 0);
 
     lv_obj_t *left_panel = lv_obj_create(screen);
-    lv_obj_set_size(left_panel, 470, 395);
-    lv_obj_set_pos(left_panel, 16, 66);
+    lv_obj_set_size(left_panel, clock_panel_w, panel_h);
+    lv_obj_set_pos(left_panel, content_x, content_y);
     style_panel(left_panel);
 
     lv_obj_t *clock_title = lv_label_create(left_panel);
-    lv_obj_set_pos(clock_title, 14, 12);
+    lv_obj_set_pos(clock_title, 0, 0);
     style_small_cjk_label(clock_title, lv_color_hex(0x68C1FF));
     lv_label_set_text(clock_title, "时间");
 
     s_ui.time_label = lv_label_create(left_panel);
     lv_obj_set_style_text_font(s_ui.time_label, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(s_ui.time_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_pos(s_ui.time_label, 12, 48);
+    lv_obj_set_pos(s_ui.time_label, 0, 32);
 
     s_ui.date_label = lv_label_create(left_panel);
-    lv_obj_set_pos(s_ui.date_label, 14, 118);
+    lv_obj_set_pos(s_ui.date_label, 0, 90);
+    lv_obj_set_width(s_ui.date_label, 230);
     style_small_cjk_label(s_ui.date_label, lv_color_hex(0xA7B5C8));
 
     lv_obj_t *clock_desc = lv_label_create(left_panel);
-    lv_obj_set_pos(clock_desc, 14, 156);
+    lv_obj_set_pos(clock_desc, 0, 118);
     style_small_cjk_label(clock_desc, lv_color_hex(0x7D92A9));
-    lv_label_set_text(clock_desc, "数字时钟 + 模拟表盘");
+    lv_label_set_text(clock_desc, "数字时钟 / 模拟表盘");
 
     create_clock_visual(left_panel);
 
-    lv_obj_t *right_panel = lv_obj_create(screen);
-    lv_obj_set_size(right_panel, 298, 395);
-    lv_obj_set_pos(right_panel, 496, 66);
-    style_panel(right_panel);
+    lv_obj_t *weather_panel = lv_obj_create(screen);
+    lv_obj_set_size(weather_panel, weather_panel_w, panel_h);
+    lv_obj_set_pos(weather_panel, content_x + clock_panel_w + panel_gap, content_y);
+    style_panel(weather_panel);
 
-    lv_obj_t *weather_head = lv_label_create(right_panel);
+    lv_obj_t *weather_head = lv_label_create(weather_panel);
     lv_obj_set_pos(weather_head, 0, 0);
     style_small_cjk_label(weather_head, lv_color_hex(0x68C1FF));
     lv_label_set_text(weather_head, "实时天气");
 
-    s_ui.weather_title = lv_label_create(right_panel);
+    s_ui.weather_title = lv_label_create(weather_panel);
     lv_obj_set_pos(s_ui.weather_title, 0, 26);
+    lv_obj_set_width(s_ui.weather_title, 104);
     style_small_cjk_label(s_ui.weather_title, lv_color_hex(0xFFFFFF));
 
-    s_ui.weather_temp = lv_label_create(right_panel);
+    s_ui.weather_temp = lv_label_create(weather_panel);
     lv_obj_set_pos(s_ui.weather_temp, 0, 56);
     lv_obj_set_style_text_font(s_ui.weather_temp, &lv_font_montserrat_32, 0);
     lv_obj_set_style_text_color(s_ui.weather_temp, lv_color_hex(0xFFFFFF), 0);
 
-    s_ui.weather_cond = lv_label_create(right_panel);
-    lv_obj_set_pos(s_ui.weather_cond, 0, 106);
+    s_ui.weather_cond = lv_label_create(weather_panel);
+    lv_obj_set_pos(s_ui.weather_cond, 0, 102);
+    lv_obj_set_width(s_ui.weather_cond, 104);
     style_small_cjk_label(s_ui.weather_cond, lv_color_hex(0x68C1FF));
 
-    create_weather_visual(right_panel);
+    create_weather_visual(weather_panel);
 
-    lv_obj_t *forecast_title = lv_label_create(right_panel);
-    lv_obj_set_pos(forecast_title, 0, 228);
+    lv_obj_t *forecast_title = lv_label_create(weather_panel);
+    lv_obj_set_pos(forecast_title, 0, 220);
     style_small_cjk_label(forecast_title, lv_color_hex(0x68C1FF));
     lv_label_set_text(forecast_title, "3日天气");
 
-    create_detail_card(right_panel, &s_ui.detail_humidity, 0, 146);
-    create_detail_card(right_panel, &s_ui.detail_feels, 126, 146);
-    create_detail_card(right_panel, &s_ui.detail_wind, 0, 182);
-    create_detail_card(right_panel, &s_ui.detail_vis, 126, 182);
+    create_detail_card(weather_panel, &s_ui.detail_humidity, 0, 132);
+    create_detail_card(weather_panel, &s_ui.detail_feels, 108, 132);
+    create_detail_card(weather_panel, &s_ui.detail_wind, 0, 172);
+    create_detail_card(weather_panel, &s_ui.detail_vis, 108, 172);
 
-    create_forecast_card(right_panel, 0, 0);
-    create_forecast_card(right_panel, 1, 84);
-    create_forecast_card(right_panel, 2, 168);
+    create_forecast_card(weather_panel, 0, 0);
+    create_forecast_card(weather_panel, 1, 72);
+    create_forecast_card(weather_panel, 2, 144);
 
     set_label_text_if_changed(s_ui.weather_title, s_ui.weather_title_text, sizeof(s_ui.weather_title_text), "天气");
 
-    // Create music player UI
-    ui_music_player_create(screen);
+    ui_music_player_create(screen,
+                           content_x + clock_panel_w + weather_panel_w + (panel_gap * 2),
+                           content_y,
+                           music_panel_w,
+                           panel_h);
 }
 
 static void update_status_text(void)
