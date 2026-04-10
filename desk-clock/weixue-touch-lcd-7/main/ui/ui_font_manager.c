@@ -6,23 +6,44 @@
 
 #include <stdbool.h>
 
+#include "app_events.h"
 #include "config.h"
 #include "esp_log.h"
 #include "esp_spiffs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "ui_stream_binfont.h"
 
 LV_FONT_DECLARE(ui_font_noto_sc_16);
+LV_FONT_DECLARE(lv_font_simsun_16_cjk);
 
 #define UI_FONT_FS_BASE_PATH        "/spiffs"
 #define UI_FONT_FS_PARTITION_LABEL  "fonts"
-#define UI_FONT_BIN_PATH            "A:/spiffs/ui_font_noto_sc_gb2312_16.bin"
+#define UI_FONT_BIN_PATH            "/spiffs/ui_font_noto_sc_gb2312_16.bin"
 
-static const lv_font_t *s_font_16 = &ui_font_noto_sc_16;
+/* Use the built-in full CJK font for the first frame so UI creation never
+ * blocks on loading the external binfont from SPIFFS. */
+static const lv_font_t *s_font_16 = &lv_font_simsun_16_cjk;
 static lv_font_t *s_external_font_16 = NULL;
 static bool s_init_done = false;
 static bool s_fs_ready = false;
 static bool s_load_attempted = false;
 static esp_err_t s_init_result = ESP_OK;
 static esp_err_t s_load_result = ESP_ERR_INVALID_STATE;
+
+static void post_font_state_event(app_font_state_t state, esp_err_t err)
+{
+    app_font_event_t event = {
+        .state = state,
+        .external_loaded = ui_font_manager_is_external_loaded(),
+        .err = err,
+    };
+
+    esp_err_t ret = app_events_post(APP_EVENT_FONT_STATE_CHANGED, &event, sizeof(event));
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG_UI, "Post font event failed: %s", esp_err_to_name(ret));
+    }
+}
 
 esp_err_t ui_font_manager_init(void)
 {
@@ -49,7 +70,7 @@ esp_err_t ui_font_manager_init(void)
 
     s_fs_ready = true;
     s_init_result = ESP_OK;
-    ESP_LOGI(TAG_UI, "Font partition mounted, external GB2312 font will be loaded later");
+    ESP_LOGI(TAG_UI, "Font partition mounted, external GB2312 font will preload in background");
     return ESP_OK;
 }
 
@@ -73,9 +94,9 @@ esp_err_t ui_font_manager_load_external(void)
     }
 
     s_load_attempted = true;
-    ESP_LOGI(TAG_UI, "Loading external font from flash: %s", UI_FONT_BIN_PATH);
+    ESP_LOGI(TAG_UI, "Preloading external font into memory: %s", UI_FONT_BIN_PATH);
 
-    s_external_font_16 = lv_binfont_create(UI_FONT_BIN_PATH);
+    s_external_font_16 = ui_stream_binfont_create(UI_FONT_BIN_PATH);
     if (!s_external_font_16) {
         s_load_result = ESP_FAIL;
         ESP_LOGW(TAG_UI, "Load external font failed, fallback to built-in font");
@@ -100,4 +121,30 @@ esp_err_t ui_font_manager_load_external(void)
 bool ui_font_manager_is_external_loaded(void)
 {
     return s_external_font_16 != NULL;
+}
+
+void ui_font_loader_task(void *arg)
+{
+    esp_err_t ret = ESP_OK;
+
+    (void)arg;
+
+    ret = ui_font_manager_init();
+    if (ret != ESP_OK) {
+        post_font_state_event(APP_FONT_STATE_FAILED, ret);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    if (s_load_attempted) {
+        post_font_state_event(s_load_result == ESP_OK ? APP_FONT_STATE_READY : APP_FONT_STATE_FAILED,
+                              s_load_result);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    post_font_state_event(APP_FONT_STATE_LOADING, ESP_OK);
+    ret = ui_font_manager_load_external();
+    post_font_state_event(ret == ESP_OK ? APP_FONT_STATE_READY : APP_FONT_STATE_FAILED, ret);
+    vTaskDelete(NULL);
 }

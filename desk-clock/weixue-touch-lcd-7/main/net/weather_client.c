@@ -3,34 +3,42 @@
  * @brief QWeather v7 client
  */
 #include "weather_client.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+#include "app_events.h"
 #include "config.h"
 #include "net/ntp_client.h"
 #include "net/wifi_manager.h"
 #include "storage/config_store.h"
 
 #include "cJSON.h"
+#include "esp_event.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_system.h"
-#include "miniz.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
-#include <stdlib.h>
-#include <string.h>
+#include "miniz.h"
 
 #include "mbedtls/error.h"
 #include "mbedtls/x509_crt.h"
 
 #define HTTP_BUF_SIZE 4096
-#define WEATHER_NTP_WAIT_MS 45000
 #define WEATHER_VALID_UNIX_TIME 1735689600LL
+#define WEATHER_NOTIFY_WIFI_READY BIT0
+#define WEATHER_NOTIFY_WIFI_LOST BIT1
+#define WEATHER_NOTIFY_TIME_READY BIT2
+#define WEATHER_NOTIFY_TIME_WAITING BIT3
+#define WEATHER_INIT_RETRY_MS 5000
 
 static weather_data_t s_data = { 0 };
 static char *s_http_buf = NULL;
 static int s_http_len = 0;
+static TaskHandle_t s_weather_task_handle = NULL;
 
 #if !CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY
 extern const char certs_isrg_root_x1_pem_start[] asm("_binary_isrg_root_x1_pem_start");
@@ -68,6 +76,48 @@ static void log_weather_clock_state(const char *stage)
 static bool weather_time_is_valid(void)
 {
     return ntp_client_get_time() >= WEATHER_VALID_UNIX_TIME;
+}
+
+static void post_weather_state_event(app_weather_state_t state, bool wifi_ready,
+                                     bool time_ready, esp_err_t err)
+{
+    app_weather_event_t event = {
+        .state = state,
+        .wifi_ready = wifi_ready,
+        .time_ready = time_ready,
+        .err = err,
+    };
+
+    if (state == APP_WEATHER_STATE_UPDATED) {
+        weather_client_get_data(&event.data);
+    }
+
+    esp_err_t post_ret = app_events_post(APP_EVENT_WEATHER_STATE_CHANGED, &event, sizeof(event));
+    if (post_ret != ESP_OK && post_ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG_WEATHER, "Post weather event failed: %s", esp_err_to_name(post_ret));
+    }
+}
+
+static void weather_app_event_handler(void *arg, esp_event_base_t base, int32_t id, void *event_data)
+{
+    (void)arg;
+
+    if (base != APP_EVENTS || !s_weather_task_handle) {
+        return;
+    }
+
+    if (id == APP_EVENT_WIFI_STATE_CHANGED) {
+        const app_wifi_event_t *event = (const app_wifi_event_t *)event_data;
+        uint32_t bits = (event && event->connected) ? WEATHER_NOTIFY_WIFI_READY : WEATHER_NOTIFY_WIFI_LOST;
+        xTaskNotify(s_weather_task_handle, bits, eSetBits);
+        return;
+    }
+
+    if (id == APP_EVENT_NTP_STATE_CHANGED) {
+        const app_ntp_event_t *event = (const app_ntp_event_t *)event_data;
+        uint32_t bits = (event && event->synced) ? WEATHER_NOTIFY_TIME_READY : WEATHER_NOTIFY_TIME_WAITING;
+        xTaskNotify(s_weather_task_handle, bits, eSetBits);
+    }
 }
 
 static void log_tls_failure_details(esp_http_client_handle_t client)
@@ -475,38 +525,101 @@ void weather_client_get_data(weather_data_t *data)
 
 void weather_task(void *arg)
 {
+    bool wifi_ready = false;
+    bool time_ready = false;
+    bool fetch_due = false;
+    TickType_t next_fetch_tick = 0;
+
+    (void)arg;
+
     ESP_LOGI(TAG_WEATHER, "Weather task started");
-
-    while (!wifi_manager_is_connected()) {
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
-
-    int waited_ms = 0;
-    while (!weather_time_is_valid() && waited_ms < WEATHER_NTP_WAIT_MS) {
-        if (waited_ms == 0) {
-            ESP_LOGI(TAG_WEATHER, "Waiting for valid system time before first HTTPS request");
-        }
-        if ((waited_ms % 5000) == 0) {
-            log_weather_clock_state("weather waiting");
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        waited_ms += 1000;
-    }
-    if (!weather_time_is_valid()) {
-        ESP_LOGW(TAG_WEATHER, "System time still invalid after wait, first weather fetch skipped");
-        log_weather_clock_state("weather wait timeout");
-    } else {
-        log_weather_clock_state("weather time ready");
-    }
-    vTaskDelay(pdMS_TO_TICKS(1000));
-
-    weather_client_fetch();
-    ESP_LOGI(TAG_WEATHER, "weather task stack watermark=%u",
-             (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    s_weather_task_handle = xTaskGetCurrentTaskHandle();
+    ESP_ERROR_CHECK(esp_event_handler_register_with(app_events_loop(), APP_EVENTS,
+                                                    APP_EVENT_WIFI_STATE_CHANGED,
+                                                    weather_app_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register_with(app_events_loop(), APP_EVENTS,
+                                                    APP_EVENT_NTP_STATE_CHANGED,
+                                                    weather_app_event_handler, NULL));
 
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS((uint32_t)WEATHER_UPDATE_INTERVAL_S * 1000));
-        weather_client_fetch();
+        esp_err_t init_ret = weather_client_init();
+        if (init_ret == ESP_OK) {
+            break;
+        }
+
+        ESP_LOGW(TAG_WEATHER, "Weather client init failed: %s, retry in %d ms",
+                 esp_err_to_name(init_ret), WEATHER_INIT_RETRY_MS);
+        vTaskDelay(pdMS_TO_TICKS(WEATHER_INIT_RETRY_MS));
+    }
+
+    wifi_ready = wifi_manager_is_connected();
+    time_ready = ntp_client_has_valid_time() || ntp_client_is_synced();
+    post_weather_state_event(APP_WEATHER_STATE_WAITING, wifi_ready, time_ready, ESP_OK);
+
+    if (wifi_ready) {
+        xTaskNotify(s_weather_task_handle, WEATHER_NOTIFY_WIFI_READY, eSetBits);
+    }
+    if (time_ready) {
+        xTaskNotify(s_weather_task_handle, WEATHER_NOTIFY_TIME_READY, eSetBits);
+    }
+
+    while (1) {
+        uint32_t notify_bits = 0;
+        TickType_t wait_ticks = portMAX_DELAY;
+        TickType_t now_tick = xTaskGetTickCount();
+
+        if (wifi_ready && time_ready && next_fetch_tick != 0 && !fetch_due) {
+            if (now_tick >= next_fetch_tick) {
+                wait_ticks = 0;
+            } else {
+                wait_ticks = next_fetch_tick - now_tick;
+            }
+        } else if (wifi_ready && time_ready) {
+            wait_ticks = 0;
+        }
+
+        (void)xTaskNotifyWait(0, 0xFFFFFFFFu, &notify_bits, wait_ticks);
+
+        if (notify_bits & WEATHER_NOTIFY_WIFI_READY) {
+            wifi_ready = true;
+            fetch_due = true;
+        }
+        if (notify_bits & WEATHER_NOTIFY_WIFI_LOST) {
+            wifi_ready = false;
+            next_fetch_tick = 0;
+            post_weather_state_event(APP_WEATHER_STATE_WAITING, wifi_ready, time_ready, ESP_OK);
+        }
+        if (notify_bits & WEATHER_NOTIFY_TIME_READY) {
+            time_ready = true;
+            fetch_due = true;
+        }
+        if (notify_bits & WEATHER_NOTIFY_TIME_WAITING) {
+            time_ready = ntp_client_has_valid_time() || ntp_client_is_synced();
+            if (!time_ready) {
+                next_fetch_tick = 0;
+                post_weather_state_event(APP_WEATHER_STATE_WAITING, wifi_ready, time_ready, ESP_OK);
+            }
+        }
+
+        if (!wifi_ready || !time_ready) {
+            continue;
+        }
+
+        if (!fetch_due && next_fetch_tick != 0 && xTaskGetTickCount() < next_fetch_tick) {
+            continue;
+        }
+
+        post_weather_state_event(APP_WEATHER_STATE_FETCHING, wifi_ready, time_ready, ESP_OK);
+        esp_err_t fetch_ret = weather_client_fetch();
+        if (fetch_ret == ESP_OK) {
+            post_weather_state_event(APP_WEATHER_STATE_UPDATED, wifi_ready, time_ready, ESP_OK);
+        } else {
+            post_weather_state_event(APP_WEATHER_STATE_FAILED, wifi_ready, time_ready, fetch_ret);
+        }
+
+        fetch_due = false;
+        next_fetch_tick = xTaskGetTickCount() +
+                          pdMS_TO_TICKS((uint32_t)WEATHER_UPDATE_INTERVAL_S * 1000U);
         ESP_LOGI(TAG_WEATHER, "weather task stack watermark=%u",
                  (unsigned)uxTaskGetStackHighWaterMark(NULL));
     }

@@ -79,6 +79,28 @@
 #endif
 
 /* ================================================================
+ * Battery Monitor
+ * ================================================================ */
+/*
+ * Stock Waveshare ESP32-S3-Touch-LCD-7 boards expose a battery connector and
+ * charging LEDs, but this project does not currently have a confirmed onboard
+ * battery sense line wired to the MCU. Keep monitoring disabled by default.
+ *
+ * If you later wire battery voltage to the Sensor AD header (GPIO6) through a
+ * resistor divider, enable the monitor and adjust the divider / voltage range.
+ */
+#define BATTERY_MONITOR_ENABLED         0
+#define BATTERY_ADC_GPIO                6
+#define BATTERY_ADC_ATTEN_DB            12
+#define BATTERY_ADC_DIVIDER_NUM         2U
+#define BATTERY_ADC_DIVIDER_DEN         1U
+#define BATTERY_EMPTY_MV                3300U
+#define BATTERY_FULL_MV                 4200U
+#define BATTERY_VOLTAGE_MIN_VALID_MV    2500U
+#define BATTERY_VOLTAGE_MAX_VALID_MV    4500U
+#define BATTERY_SAMPLE_COUNT            8
+
+/* ================================================================
  * NTP
  * ================================================================ */
 #define NTP_SERVER_1        "ntp.aliyun.com"
@@ -139,9 +161,13 @@
 #define TASK_STACK_LCD_DIAG     (4  * 1024)
 #define TASK_STACK_WEATHER      (16 * 1024)
 #define TASK_STACK_NTP          (4  * 1024)
+#define TASK_STACK_FONT         (4  * 1024)
+#define TASK_STACK_APP_EVENT    (4  * 1024)
 #define TASK_STACK_AUDIO        (4  * 1024)
 #define TASK_PRIO_LCD_DIAG      3
 #define TASK_PRIO_UI            7
+#define TASK_PRIO_APP_EVENT     6
 #define TASK_PRIO_WEATHER       4
 #define TASK_PRIO_NTP           5
+#define TASK_PRIO_FONT          4
 #define TASK_PRIO_AUDIO         5

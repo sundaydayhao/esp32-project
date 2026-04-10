@@ -335,15 +335,25 @@ void ui_music_player_refresh_fonts(void)
 
     if (s_music_ui.title_label) {
         lv_obj_set_style_text_font(s_music_ui.title_label, font, 0);
+        lv_label_set_text(s_music_ui.title_label, "音乐播放");
     }
     if (s_music_ui.track_label) {
         lv_obj_set_style_text_font(s_music_ui.track_label, font, 0);
+        lv_label_set_long_mode(s_music_ui.track_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+        lv_label_set_text(s_music_ui.track_label,
+                          s_music_ui.track_text[0] ? s_music_ui.track_text : "无音乐文件");
     }
     if (s_music_ui.time_label) {
         lv_obj_set_style_text_font(s_music_ui.time_label, font, 0);
+        if (s_music_ui.time_text[0]) {
+            lv_label_set_text(s_music_ui.time_label, s_music_ui.time_text);
+        }
     }
     if (s_music_ui.status_label) {
         lv_obj_set_style_text_font(s_music_ui.status_label, font, 0);
+        if (s_music_ui.status_text[0]) {
+            lv_label_set_text(s_music_ui.status_label, s_music_ui.status_text);
+        }
     }
 }
 

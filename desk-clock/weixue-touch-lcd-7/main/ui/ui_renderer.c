@@ -6,29 +6,32 @@
 #include <string.h>
 #include <time.h>
 
+#include "app_events.h"
 #include "audio/audio_player.h"
 #include "config.h"
+#include "esp_event.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "lcd/lcd_driver.h"
 #include "lvgl.h"
 #include "net/ntp_client.h"
 #include "net/weather_client.h"
 #include "net/wifi_manager.h"
+#include "power/battery_monitor.h"
 #include "ui/ui_font_manager.h"
 #include "ui/ui_music_player.h"
 
 #define LVGL_TICK_PERIOD_MS 5
 #define UI_MIN_DELAY_MS 10
 #define UI_MAX_DELAY_MS 100
-#define UI_STATUS_UPDATE_MS 2000
+#define UI_STATUS_UPDATE_MS 5000
 #define UI_CLOCK_UPDATE_MS 1000
-#define UI_WEATHER_UPDATE_MS 30000
 #define UI_MUSIC_UPDATE_MS 1000
-#define UI_FONT_DEFERRED_LOAD_MS 5000
+#define UI_EVENT_QUEUE_LEN 16
 #define UI_FLUSH_TIMEOUT_MS 1000
 #define UI_PI 3.14159265358979323846f
 #define UI_DEGREE_SYMBOL "\xC2\xB0"
@@ -44,6 +47,9 @@ typedef enum {
 
 typedef struct {
     lv_obj_t *status_label;
+    lv_obj_t *network_icon_label;
+    lv_obj_t *network_value_label;
+    lv_obj_t *battery_icon_label;
     lv_obj_t *battery_label;
     lv_obj_t *time_label;
     lv_obj_t *date_label;
@@ -68,6 +74,9 @@ typedef struct {
     lv_obj_t *forecast_temp[3];
 
     char status_text[96];
+    char network_icon_text[16];
+    char network_value_text[12];
+    char battery_icon_text[16];
     char battery_text[24];
     char time_text[16];
     char date_text[40];
@@ -83,12 +92,34 @@ typedef struct {
     char forecast_temp_text[3][16];
 } ui_state_t;
 
+typedef enum {
+    UI_MSG_WIFI = 1,
+    UI_MSG_FONT,
+    UI_MSG_NTP,
+    UI_MSG_WEATHER,
+} ui_msg_type_t;
+
+typedef struct {
+    ui_msg_type_t type;
+    union {
+        app_wifi_event_t wifi;
+        app_font_event_t font;
+        app_ntp_event_t ntp;
+        app_weather_event_t weather;
+    } data;
+} ui_msg_t;
+
 static lv_display_t *s_display = NULL;
 static esp_timer_handle_t s_lvgl_tick_timer = NULL;
+static QueueHandle_t s_ui_event_queue = NULL;
 static ui_state_t s_ui = {0};
+static app_wifi_event_t s_latest_wifi = {0};
+static weather_data_t s_latest_weather = {0};
+static app_weather_state_t s_latest_weather_state = APP_WEATHER_STATE_WAITING;
 static uint32_t s_flush_count = 0;
 static volatile TaskHandle_t s_flush_wait_task = NULL;
-static bool s_deferred_font_load_done = false;
+static bool s_time_ready = false;
+static bool s_ui_ready = false;
 
 static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t storage_size, const char *text)
 {
@@ -116,6 +147,84 @@ static int wifi_signal_percent(int8_t rssi)
     }
 
     return (int)((rssi + 100) * 2);
+}
+
+static int wifi_signal_level(int8_t rssi)
+{
+    if (rssi >= -60) {
+        return 3;
+    }
+    if (rssi >= -70) {
+        return 2;
+    }
+    if (rssi >= -80) {
+        return 1;
+    }
+    return 0;
+}
+
+static lv_color_t wifi_indicator_color(const app_wifi_event_t *wifi)
+{
+    if (!wifi) {
+        return lv_color_hex(0x6C7A88);
+    }
+
+    if (wifi->connected) {
+        switch (wifi_signal_level(wifi->rssi)) {
+        case 3:
+            return lv_color_hex(0x68C1FF);
+        case 2:
+            return lv_color_hex(0x8FDDB9);
+        case 1:
+            return lv_color_hex(0xF8C05A);
+        default:
+            return lv_color_hex(0x9FB0C3);
+        }
+    }
+
+    if (wifi->configuring || wifi->state == WIFI_STATE_CONNECTING) {
+        return lv_color_hex(0xF8C05A);
+    }
+
+    return lv_color_hex(0x6C7A88);
+}
+
+static const char *battery_icon_for_level(uint8_t level_percent, bool charging)
+{
+    if (charging) {
+        return LV_SYMBOL_CHARGE;
+    }
+    if (level_percent >= 90U) {
+        return LV_SYMBOL_BATTERY_FULL;
+    }
+    if (level_percent >= 65U) {
+        return LV_SYMBOL_BATTERY_3;
+    }
+    if (level_percent >= 40U) {
+        return LV_SYMBOL_BATTERY_2;
+    }
+    if (level_percent >= 15U) {
+        return LV_SYMBOL_BATTERY_1;
+    }
+    return LV_SYMBOL_BATTERY_EMPTY;
+}
+
+static lv_color_t battery_indicator_color(const battery_status_t *battery)
+{
+    if (!battery || !battery->available) {
+        return lv_color_hex(0x6C7A88);
+    }
+
+    if (battery->charging) {
+        return lv_color_hex(0x68C1FF);
+    }
+    if (battery->level_percent <= 10U) {
+        return lv_color_hex(0xFF7D7D);
+    }
+    if (battery->level_percent <= 25U) {
+        return lv_color_hex(0xF8C05A);
+    }
+    return lv_color_hex(0xB9C7D8);
 }
 
 static const char *weekday_cn(int wday)
@@ -166,6 +275,81 @@ static weather_icon_mode_t weather_icon_mode_from_code(const char *icon_code)
     }
 
     return WEATHER_ICON_CLOUDY;
+}
+
+static void capture_current_wifi_state(app_wifi_event_t *wifi)
+{
+    if (!wifi) {
+        return;
+    }
+
+    memset(wifi, 0, sizeof(*wifi));
+    wifi->state = wifi_manager_get_state();
+    wifi->connected = wifi->state == WIFI_STATE_CONNECTED;
+    wifi->configuring = wifi->state == WIFI_STATE_CONFIGURING;
+    wifi->has_credentials = wifi_manager_has_credentials();
+    wifi->rssi = wifi->connected ? wifi_manager_get_rssi() : 0;
+    wifi_manager_get_ip(wifi->ip, sizeof(wifi->ip));
+    wifi_manager_get_saved_ssid(wifi->ssid, sizeof(wifi->ssid));
+    wifi_manager_get_ap_ssid(wifi->ap_ssid, sizeof(wifi->ap_ssid));
+    if (wifi->configuring && wifi->ip[0] == '\0') {
+        strlcpy(wifi->ip, WIFI_PROV_AP_IP, sizeof(wifi->ip));
+    }
+}
+
+static void ui_enqueue_msg(const ui_msg_t *msg)
+{
+    if (!s_ui_event_queue || !msg) {
+        return;
+    }
+
+    if (xQueueSend(s_ui_event_queue, msg, 0) != pdTRUE) {
+        ESP_LOGW(TAG_UI, "UI event queue full, drop message type=%d", (int)msg->type);
+    }
+}
+
+static void ui_app_event_handler(void *arg, esp_event_base_t base, int32_t id, void *event_data)
+{
+    ui_msg_t msg = {0};
+
+    (void)arg;
+
+    if (base != APP_EVENTS || !s_ui_event_queue) {
+        return;
+    }
+
+    switch (id) {
+    case APP_EVENT_WIFI_STATE_CHANGED:
+        msg.type = UI_MSG_WIFI;
+        if (event_data) {
+            msg.data.wifi = *(const app_wifi_event_t *)event_data;
+        }
+        ui_enqueue_msg(&msg);
+        break;
+    case APP_EVENT_FONT_STATE_CHANGED:
+        msg.type = UI_MSG_FONT;
+        if (event_data) {
+            msg.data.font = *(const app_font_event_t *)event_data;
+        }
+        ui_enqueue_msg(&msg);
+        break;
+    case APP_EVENT_NTP_STATE_CHANGED:
+        msg.type = UI_MSG_NTP;
+        if (event_data) {
+            msg.data.ntp = *(const app_ntp_event_t *)event_data;
+        }
+        ui_enqueue_msg(&msg);
+        break;
+    case APP_EVENT_WEATHER_STATE_CHANGED:
+        msg.type = UI_MSG_WEATHER;
+        if (event_data) {
+            msg.data.weather = *(const app_weather_event_t *)event_data;
+        }
+        ui_enqueue_msg(&msg);
+        break;
+    default:
+        break;
+    }
 }
 
 static bool lvgl_flush_ready_cb(void *user_ctx)
@@ -601,14 +785,38 @@ static void create_ui(void)
     lv_obj_set_style_pad_ver(status_bar, 8, 0);
 
     s_ui.status_label = lv_label_create(status_bar);
+    lv_obj_set_width(s_ui.status_label, 560);
     lv_obj_set_style_text_font(s_ui.status_label, ui_font_manager_get_font_16(), 0);
     lv_obj_set_style_text_color(s_ui.status_label, lv_color_hex(0xB9C7D8), 0);
+    lv_label_set_long_mode(s_ui.status_label, LV_LABEL_LONG_CLIP);
     lv_obj_align(s_ui.status_label, LV_ALIGN_LEFT_MID, 0, 0);
 
-    s_ui.battery_label = lv_label_create(status_bar);
-    lv_obj_set_style_text_font(s_ui.battery_label, ui_font_manager_get_font_16(), 0);
-    lv_obj_set_style_text_color(s_ui.battery_label, lv_color_hex(0xB9C7D8), 0);
-    lv_obj_align(s_ui.battery_label, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_t *status_metrics = lv_obj_create(status_bar);
+    lv_obj_remove_style_all(status_metrics);
+    lv_obj_clear_flag(status_metrics, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_layout(status_metrics, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(status_metrics, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(status_metrics, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(status_metrics, 0, 0);
+    lv_obj_set_style_pad_column(status_metrics, 6, 0);
+    lv_obj_set_size(status_metrics, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_align(status_metrics, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    s_ui.network_icon_label = lv_label_create(status_metrics);
+    lv_obj_set_style_text_font(s_ui.network_icon_label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_color(s_ui.network_icon_label, lv_color_hex(0x6C7A88), 0);
+
+    s_ui.network_value_label = lv_label_create(status_metrics);
+    lv_obj_set_style_text_font(s_ui.network_value_label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_color(s_ui.network_value_label, lv_color_hex(0x6C7A88), 0);
+
+    s_ui.battery_icon_label = lv_label_create(status_metrics);
+    lv_obj_set_style_text_font(s_ui.battery_icon_label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_color(s_ui.battery_icon_label, lv_color_hex(0x6C7A88), 0);
+
+    s_ui.battery_label = lv_label_create(status_metrics);
+    lv_obj_set_style_text_font(s_ui.battery_label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_color(s_ui.battery_label, lv_color_hex(0x6C7A88), 0);
 
     lv_obj_t *left_panel = lv_obj_create(screen);
     lv_obj_set_size(left_panel, clock_panel_w, panel_h);
@@ -688,23 +896,73 @@ static void create_ui(void)
 static void update_status_text(void)
 {
     char new_status[sizeof(s_ui.status_text)];
+    char new_network_icon[sizeof(s_ui.network_icon_text)];
+    char new_network_value[sizeof(s_ui.network_value_text)];
+    char new_battery_icon[sizeof(s_ui.battery_icon_text)];
     char new_battery[sizeof(s_ui.battery_text)];
+    battery_status_t battery = {0};
+    bool battery_ready = battery_monitor_get_status(&battery);
+    lv_color_t network_color = wifi_indicator_color(&s_latest_wifi);
+    lv_color_t battery_color = lv_color_hex(0x6C7A88);
 
-    if (wifi_manager_is_connected()) {
-        char ip[20] = "";
-        int quality = wifi_signal_percent(wifi_manager_get_rssi());
-        wifi_manager_get_ip(ip, sizeof(ip));
-        snprintf(new_status, sizeof(new_status), "WiFi %d%%  %s", quality, ip);
-    } else if (wifi_manager_is_config_mode()) {
-        snprintf(new_status, sizeof(new_status), "WiFi AP  %s", WIFI_PROV_AP_IP);
+    if (s_latest_wifi.connected) {
+        if (s_latest_wifi.ip[0]) {
+            snprintf(new_status, sizeof(new_status), "WiFi 已连接  %s", s_latest_wifi.ip);
+        } else {
+            snprintf(new_status, sizeof(new_status), "WiFi 已连接");
+        }
+    } else if (s_latest_wifi.configuring) {
+        snprintf(new_status, sizeof(new_status), "WiFi AP  %s",
+                 s_latest_wifi.ip[0] ? s_latest_wifi.ip : WIFI_PROV_AP_IP);
+    } else if (s_latest_wifi.state == WIFI_STATE_CONNECTING) {
+        snprintf(new_status, sizeof(new_status), "WiFi 连接中...");
+    } else if (s_latest_wifi.has_credentials) {
+        snprintf(new_status, sizeof(new_status), "WiFi 已断开");
     } else {
-        snprintf(new_status, sizeof(new_status), "WiFi --");
+        snprintf(new_status, sizeof(new_status), "WiFi 待配置");
     }
 
-    snprintf(new_battery, sizeof(new_battery), "电量 --");
+    strlcpy(new_network_icon, LV_SYMBOL_WIFI, sizeof(new_network_icon));
+    if (s_latest_wifi.connected && s_latest_wifi.rssi != 0) {
+        snprintf(new_network_value, sizeof(new_network_value), "%d%%",
+                 wifi_signal_percent(s_latest_wifi.rssi));
+    } else if (s_latest_wifi.configuring) {
+        strlcpy(new_network_value, "AP", sizeof(new_network_value));
+    } else if (s_latest_wifi.state == WIFI_STATE_CONNECTING) {
+        strlcpy(new_network_value, "...", sizeof(new_network_value));
+    } else {
+        strlcpy(new_network_value, "--", sizeof(new_network_value));
+    }
+
+    if (battery_ready && battery.available) {
+        strlcpy(new_battery_icon,
+                battery_icon_for_level(battery.level_percent, battery.charging),
+                sizeof(new_battery_icon));
+        snprintf(new_battery, sizeof(new_battery), "%u%%", battery.level_percent);
+        battery_color = battery_indicator_color(&battery);
+    } else {
+        strlcpy(new_battery_icon, LV_SYMBOL_BATTERY_EMPTY, sizeof(new_battery_icon));
+        strlcpy(new_battery, "--", sizeof(new_battery));
+    }
 
     set_label_text_if_changed(s_ui.status_label, s_ui.status_text, sizeof(s_ui.status_text), new_status);
+    set_label_text_if_changed(s_ui.network_icon_label, s_ui.network_icon_text, sizeof(s_ui.network_icon_text), new_network_icon);
+    set_label_text_if_changed(s_ui.network_value_label, s_ui.network_value_text, sizeof(s_ui.network_value_text), new_network_value);
+    set_label_text_if_changed(s_ui.battery_icon_label, s_ui.battery_icon_text, sizeof(s_ui.battery_icon_text), new_battery_icon);
     set_label_text_if_changed(s_ui.battery_label, s_ui.battery_text, sizeof(s_ui.battery_text), new_battery);
+
+    if (s_ui.network_icon_label) {
+        lv_obj_set_style_text_color(s_ui.network_icon_label, network_color, 0);
+    }
+    if (s_ui.network_value_label) {
+        lv_obj_set_style_text_color(s_ui.network_value_label, network_color, 0);
+    }
+    if (s_ui.battery_icon_label) {
+        lv_obj_set_style_text_color(s_ui.battery_icon_label, battery_color, 0);
+    }
+    if (s_ui.battery_label) {
+        lv_obj_set_style_text_color(s_ui.battery_label, battery_color, 0);
+    }
 }
 
 static void update_clock_text(void)
@@ -712,6 +970,14 @@ static void update_clock_text(void)
     struct tm now;
     char new_time[sizeof(s_ui.time_text)];
     char new_date[sizeof(s_ui.date_text)];
+
+    if (!(s_time_ready || ntp_client_has_valid_time())) {
+        strlcpy(new_time, "--:--", sizeof(new_time));
+        strlcpy(new_date, "等待 NTP 同步", sizeof(new_date));
+        set_label_text_if_changed(s_ui.time_label, s_ui.time_text, sizeof(s_ui.time_text), new_time);
+        set_label_text_if_changed(s_ui.date_label, s_ui.date_text, sizeof(s_ui.date_text), new_date);
+        return;
+    }
 
     ntp_client_get_local_time(&now);
 
@@ -726,7 +992,6 @@ static void update_clock_text(void)
 
 static void update_weather_text(void)
 {
-    weather_data_t weather = {0};
     char weather_title_text[sizeof(s_ui.weather_title_text)];
     char weather_temp_text[sizeof(s_ui.weather_temp_text)];
     char weather_cond_text[sizeof(s_ui.weather_cond_text)];
@@ -737,13 +1002,24 @@ static void update_weather_text(void)
     char forecast_date_text[3][16] = {{0}};
     char forecast_cond_text[3][24] = {{0}};
     char forecast_temp_text[3][16] = {{0}};
+    const weather_data_t *weather = &s_latest_weather;
 
-    weather_client_get_data(&weather);
-
-    if (!weather.valid) {
+    if (!weather->valid) {
         strlcpy(weather_title_text, "天气", sizeof(weather_title_text));
         strlcpy(weather_temp_text, "--", sizeof(weather_temp_text));
-        strlcpy(weather_cond_text, "更新中...", sizeof(weather_cond_text));
+        if (!s_latest_wifi.connected) {
+            strlcpy(weather_cond_text,
+                    s_latest_wifi.configuring ? "等待联网..." : "网络未连接",
+                    sizeof(weather_cond_text));
+        } else if (!(s_time_ready || ntp_client_has_valid_time())) {
+            strlcpy(weather_cond_text, "等待授时...", sizeof(weather_cond_text));
+        } else if (s_latest_weather_state == APP_WEATHER_STATE_FETCHING) {
+            strlcpy(weather_cond_text, "更新中...", sizeof(weather_cond_text));
+        } else if (s_latest_weather_state == APP_WEATHER_STATE_FAILED) {
+            strlcpy(weather_cond_text, "获取失败", sizeof(weather_cond_text));
+        } else {
+            strlcpy(weather_cond_text, "暂无数据", sizeof(weather_cond_text));
+        }
         strlcpy(detail_humidity_text, "湿度 --", sizeof(detail_humidity_text));
         strlcpy(detail_feels_text, "体感 --", sizeof(detail_feels_text));
         strlcpy(detail_wind_text, "风速 --", sizeof(detail_wind_text));
@@ -757,21 +1033,21 @@ static void update_weather_text(void)
     } else {
         strlcpy(weather_title_text, "当前天气", sizeof(weather_title_text));
 
-        snprintf(weather_temp_text, sizeof(weather_temp_text), "%d%sC", weather.temp_now, UI_DEGREE_SYMBOL);
-        snprintf(weather_cond_text, sizeof(weather_cond_text), "%s", weather_condition_text(weather.icon_code));
-        snprintf(detail_humidity_text, sizeof(detail_humidity_text), "湿度 %u%%", weather.humidity);
-        snprintf(detail_feels_text, sizeof(detail_feels_text), "体感 %d度", weather.temp_feels);
-        snprintf(detail_wind_text, sizeof(detail_wind_text), "风速 %ukm/h", weather.wind_speed);
-        snprintf(detail_vis_text, sizeof(detail_vis_text), "能见 %ukm", weather.visibility);
+        snprintf(weather_temp_text, sizeof(weather_temp_text), "%d%sC", weather->temp_now, UI_DEGREE_SYMBOL);
+        snprintf(weather_cond_text, sizeof(weather_cond_text), "%s", weather_condition_text(weather->icon_code));
+        snprintf(detail_humidity_text, sizeof(detail_humidity_text), "湿度 %u%%", weather->humidity);
+        snprintf(detail_feels_text, sizeof(detail_feels_text), "体感 %d度", weather->temp_feels);
+        snprintf(detail_wind_text, sizeof(detail_wind_text), "风速 %ukm/h", weather->wind_speed);
+        snprintf(detail_vis_text, sizeof(detail_vis_text), "能见 %ukm", weather->visibility);
 
         for (int i = 0; i < 3; i++) {
-            format_forecast_date(weather.forecast[i].date, forecast_date_text[i], sizeof(forecast_date_text[i]));
+            format_forecast_date(weather->forecast[i].date, forecast_date_text[i], sizeof(forecast_date_text[i]));
             snprintf(forecast_cond_text[i], sizeof(forecast_cond_text[i]), "%s",
-                     weather_condition_text(weather.forecast[i].icon_day));
+                     weather_condition_text(weather->forecast[i].icon_day));
             snprintf(forecast_temp_text[i], sizeof(forecast_temp_text[i]), "%d/%d%sC",
-                     weather.forecast[i].high, weather.forecast[i].low, UI_DEGREE_SYMBOL);
+                     weather->forecast[i].high, weather->forecast[i].low, UI_DEGREE_SYMBOL);
         }
-        set_weather_icon_mode(weather_icon_mode_from_code(weather.icon_code));
+        set_weather_icon_mode(weather_icon_mode_from_code(weather->icon_code));
     }
 
     set_label_text_if_changed(s_ui.weather_title, s_ui.weather_title_text, sizeof(s_ui.weather_title_text), weather_title_text);
@@ -802,9 +1078,6 @@ static void refresh_runtime_fonts(void)
 
     if (s_ui.status_label) {
         lv_obj_set_style_text_font(s_ui.status_label, font, 0);
-    }
-    if (s_ui.battery_label) {
-        lv_obj_set_style_text_font(s_ui.battery_label, font, 0);
     }
     if (s_ui.date_label) {
         lv_obj_set_style_text_font(s_ui.date_label, font, 0);
@@ -839,9 +1112,46 @@ static void refresh_runtime_fonts(void)
     ui_music_player_refresh_fonts();
 }
 
+static void process_ui_msg(const ui_msg_t *msg)
+{
+    if (!msg) {
+        return;
+    }
+
+    switch (msg->type) {
+    case UI_MSG_WIFI:
+        s_latest_wifi = msg->data.wifi;
+        update_status_text();
+        break;
+    case UI_MSG_FONT:
+        if (msg->data.font.state == APP_FONT_STATE_READY && msg->data.font.external_loaded) {
+            refresh_runtime_fonts();
+            update_all_ui_text();
+            ui_music_player_update();
+            lv_obj_invalidate(lv_screen_active());
+            ESP_LOGI(TAG_UI, "External font applied to runtime UI");
+        } else if (msg->data.font.state == APP_FONT_STATE_FAILED) {
+            ESP_LOGW(TAG_UI, "External font load failed: %s", esp_err_to_name(msg->data.font.err));
+        }
+        break;
+    case UI_MSG_NTP:
+        s_time_ready = msg->data.ntp.synced;
+        update_clock_text();
+        break;
+    case UI_MSG_WEATHER:
+        s_latest_weather_state = msg->data.weather.state;
+        if (msg->data.weather.state == APP_WEATHER_STATE_UPDATED) {
+            s_latest_weather = msg->data.weather.data;
+        }
+        update_weather_text();
+        break;
+    default:
+        break;
+    }
+}
+
 esp_err_t ui_renderer_init(void)
 {
-    esp_err_t ret;
     esp_lcd_panel_handle_t panel = lcd_driver_get_panel();
     uint16_t *fb0 = NULL;
     uint16_t *fb1 = NULL;
@@ -865,12 +1175,6 @@ esp_err_t ui_renderer_init(void)
     ESP_LOGI(TAG_UI, "ui_renderer_init: lv_init");
     lv_init();
 
-    ESP_LOGI(TAG_UI, "ui_renderer_init: font manager init");
-    ret = ui_font_manager_init();
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG_UI, "External font init failed, using built-in fallback: %s", esp_err_to_name(ret));
-    }
-
     ESP_LOGI(TAG_UI, "ui_renderer_init: display create");
     s_display = lv_display_create(LCD_H_RES, LCD_V_RES);
     lv_display_set_user_data(s_display, panel);
@@ -893,6 +1197,13 @@ esp_err_t ui_renderer_init(void)
 
     ESP_LOGI(TAG_UI, "ui_renderer_init: create ui");
     create_ui();
+    if (battery_monitor_init() != ESP_OK) {
+        ESP_LOGW(TAG_UI, "Battery monitor init skipped, status bar will show '--'");
+    }
+    capture_current_wifi_state(&s_latest_wifi);
+    weather_client_get_data(&s_latest_weather);
+    s_latest_weather_state = s_latest_weather.valid ? APP_WEATHER_STATE_UPDATED : APP_WEATHER_STATE_WAITING;
+    s_time_ready = ntp_client_has_valid_time() || ntp_client_is_synced();
     ESP_LOGI(TAG_UI, "ui_renderer_init: populate text");
     update_all_ui_text();
     lv_obj_invalidate(lv_screen_active());
@@ -902,6 +1213,16 @@ esp_err_t ui_renderer_init(void)
     ESP_LOGI(TAG_UI, "LVGL UI initialized panel=%p fb0=%p fb1=%p size=%u mode=%s",
              panel, fb0, fb1, (unsigned)fb_size,
              render_mode == LV_DISPLAY_RENDER_MODE_DIRECT ? "direct" : "partial");
+
+    s_ui_ready = true;
+    app_ui_event_t event = {
+        .state = APP_UI_STATE_READY,
+        .err = ESP_OK,
+    };
+    esp_err_t post_ret = app_events_post(APP_EVENT_UI_STATE_CHANGED, &event, sizeof(event));
+    if (post_ret != ESP_OK && post_ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG_UI, "Post UI ready event failed: %s", esp_err_to_name(post_ret));
+    }
     return ESP_OK;
 }
 
@@ -909,29 +1230,47 @@ void ui_renderer_task(void *arg)
 {
     int64_t last_status_update_us = 0;
     int64_t last_clock_update_us = 0;
-    int64_t last_weather_update_us = 0;
     int64_t last_music_update_us = 0;
+    ui_msg_t msg = {0};
+
     LV_UNUSED(arg);
+
+    s_ui_ready = false;
+    s_ui_event_queue = xQueueCreate(UI_EVENT_QUEUE_LEN, sizeof(ui_msg_t));
+    if (!s_ui_event_queue) {
+        ESP_LOGE(TAG_UI, "Create UI event queue failed");
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+
+    ESP_ERROR_CHECK(esp_event_handler_register_with(app_events_loop(), APP_EVENTS,
+                                                    ESP_EVENT_ANY_ID,
+                                                    ui_app_event_handler, NULL));
+
+    esp_err_t ret = ui_renderer_init();
+    if (ret != ESP_OK) {
+        app_ui_event_t event = {
+            .state = APP_UI_STATE_FAILED,
+            .err = ret,
+        };
+        (void)app_events_post(APP_EVENT_UI_STATE_CHANGED, &event, sizeof(event));
+        ESP_LOGE(TAG_UI, "UI init failed: %s", esp_err_to_name(ret));
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
 
     while (1) {
         int64_t now_us = esp_timer_get_time();
         uint32_t delay_ms;
 
-        if (!s_deferred_font_load_done && now_us >= (int64_t)UI_FONT_DEFERRED_LOAD_MS * 1000) {
-            s_deferred_font_load_done = true;
-            ESP_LOGI(TAG_UI, "Deferred external font load start");
-            if (ui_font_manager_load_external() == ESP_OK) {
-                refresh_runtime_fonts();
-                update_all_ui_text();
-                ui_music_player_update();
-                lv_obj_invalidate(lv_screen_active());
-                ESP_LOGI(TAG_UI, "Deferred external font load complete");
-            } else {
-                ESP_LOGW(TAG_UI, "Deferred external font load skipped or failed");
-            }
+        while (xQueueReceive(s_ui_event_queue, &msg, 0) == pdTRUE) {
+            process_ui_msg(&msg);
         }
 
         if (last_status_update_us == 0 || now_us - last_status_update_us >= (int64_t)UI_STATUS_UPDATE_MS * 1000) {
+            capture_current_wifi_state(&s_latest_wifi);
             update_status_text();
             last_status_update_us = now_us;
         }
@@ -939,11 +1278,6 @@ void ui_renderer_task(void *arg)
         if (last_clock_update_us == 0 || now_us - last_clock_update_us >= (int64_t)UI_CLOCK_UPDATE_MS * 1000) {
             update_clock_text();
             last_clock_update_us = now_us;
-        }
-
-        if (last_weather_update_us == 0 || now_us - last_weather_update_us >= (int64_t)UI_WEATHER_UPDATE_MS * 1000) {
-            update_weather_text();
-            last_weather_update_us = now_us;
         }
 
         if (last_music_update_us == 0 || now_us - last_music_update_us >= (int64_t)UI_MUSIC_UPDATE_MS * 1000) {
@@ -960,4 +1294,9 @@ void ui_renderer_task(void *arg)
 
         vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }
+}
+
+bool ui_renderer_is_ready(void)
+{
+    return s_ui_ready;
 }

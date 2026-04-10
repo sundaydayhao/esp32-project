@@ -1,14 +1,17 @@
 idf_component_register(
     SRCS
         "main.c"
+        "app_events.c"
         "lcd/lcd_driver.c"
         "lcd/waveshare_board.c"
         "net/wifi_manager.c"
         "net/ntp_client.c"
         "net/weather_client.c"
+        "power/battery_monitor.c"
         "ui/ui_renderer.c"
         "ui/ui_font_noto_sc_16.c"
         "ui/ui_font_manager.c"
+        "ui/ui_stream_binfont.c"
         "ui/ui_music_player.c"
         "storage/config_store.c"
         "web/web_dashboard.c"
@@ -17,11 +20,13 @@ idf_component_register(
         "."
         "lcd"
         "net"
+        "power"
         "ui"
         "storage"
         "web"
         "audio"
     REQUIRES
+        esp_adc
         esp_lcd
         esp_driver_gpio
         esp_driver_i2c

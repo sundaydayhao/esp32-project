@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "app_events.h"
 #include "config.h"
 #include "esp_check.h"
 #include "esp_event.h"
@@ -51,6 +52,7 @@ static esp_err_t load_credentials(char *ssid, size_t ssid_len, char *pass, size_
 static esp_err_t save_credentials(const char *ssid, const char *pass);
 static esp_err_t clear_credentials(void);
 static void set_state(wifi_state_t state);
+static void publish_wifi_state_event(void);
 static bool has_text(const char *value);
 static void refresh_ip_from_netif(void);
 
@@ -251,6 +253,39 @@ static void set_state(wifi_state_t state)
     default:
         xEventGroupClearBits(s_evt_grp, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT | WIFI_CONFIG_BIT);
         break;
+    }
+
+    publish_wifi_state_event();
+}
+
+static void publish_wifi_state_event(void)
+{
+    app_wifi_event_t event = {
+        .state = s_state,
+        .connected = s_state == WIFI_STATE_CONNECTED,
+        .configuring = s_state == WIFI_STATE_CONFIGURING,
+        .has_credentials = s_have_credentials,
+        .rssi = 0,
+    };
+
+    if (event.connected) {
+        wifi_ap_record_t ap = {0};
+        if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+            event.rssi = ap.rssi;
+        }
+    }
+
+    strlcpy(event.ssid, s_saved_ssid, sizeof(event.ssid));
+    strlcpy(event.ap_ssid, s_ap_ssid, sizeof(event.ap_ssid));
+    if (event.configuring) {
+        strlcpy(event.ip, WIFI_PROV_AP_IP, sizeof(event.ip));
+    } else {
+        strlcpy(event.ip, s_ip, sizeof(event.ip));
+    }
+
+    esp_err_t ret = app_events_post(APP_EVENT_WIFI_STATE_CHANGED, &event, sizeof(event));
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG_WIFI, "Post wifi state event failed: %s", esp_err_to_name(ret));
     }
 }
 

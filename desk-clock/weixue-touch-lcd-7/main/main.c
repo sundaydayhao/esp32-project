@@ -7,12 +7,14 @@
 #include "nvs_flash.h"
 
 #include "audio/audio_player.h"
+#include "app_events.h"
 #include "config.h"
 #include "lcd/lcd_driver.h"
 #include "net/ntp_client.h"
 #include "net/weather_client.h"
 #include "net/wifi_manager.h"
 #include "storage/config_store.h"
+#include "ui/ui_font_manager.h"
 #include "ui/ui_renderer.h"
 #include "web/web_dashboard.h"
 
@@ -42,13 +44,15 @@ static void halt_on_error(const char *subsystem, esp_err_t err)
     }
 }
 
-static void start_ui_task_or_halt(void)
+static void start_task_or_halt(TaskFunction_t task_fn, const char *name,
+                               uint32_t stack_size, UBaseType_t priority,
+                               BaseType_t core_id)
 {
     if (xTaskCreatePinnedToCore(
-            ui_renderer_task, "ui",
-            TASK_STACK_UI, NULL,
-            TASK_PRIO_UI, NULL, 1) != pdPASS) {
-        halt_on_error("UI task create", ESP_FAIL);
+            task_fn, name,
+            stack_size, NULL,
+            priority, NULL, core_id) != pdPASS) {
+        halt_on_error(name, ESP_FAIL);
     }
 }
 
@@ -99,19 +103,28 @@ void app_main(void)
     return;
 #endif
 
+    ESP_ERROR_CHECK(app_events_init());
+
 #if SYSTEM_BOOT_MODE == BOOT_MODE_UI_ONLY
     ESP_LOGW(TAG_MAIN, "Boot mode: UI only");
-    ESP_ERROR_CHECK(weather_client_init());
-    ret = ui_renderer_init();
-    if (ret != ESP_OK) {
-        halt_on_error("UI init", ret);
-    }
-    start_ui_task_or_halt();
+    start_task_or_halt(ui_font_loader_task, "font",
+                       TASK_STACK_FONT, TASK_PRIO_FONT, 0);
+    start_task_or_halt(ui_renderer_task, "ui",
+                       TASK_STACK_UI, TASK_PRIO_UI, 1);
     ESP_LOGI(TAG_MAIN, "UI-only mode started");
     return;
 #endif
 
     ESP_LOGI(TAG_MAIN, "Boot mode: full app");
+
+    start_task_or_halt(ui_font_loader_task, "font",
+                       TASK_STACK_FONT, TASK_PRIO_FONT, 0);
+    start_task_or_halt(ntp_task, "ntp",
+                       TASK_STACK_NTP, TASK_PRIO_NTP, 0);
+    start_task_or_halt(weather_task, "weather",
+                       TASK_STACK_WEATHER, TASK_PRIO_WEATHER, 0);
+    start_task_or_halt(ui_renderer_task, "ui",
+                       TASK_STACK_UI, TASK_PRIO_UI, 1);
 
     ret = wifi_manager_init();
     if (ret != ESP_OK) {
@@ -123,17 +136,6 @@ void app_main(void)
         }
     }
 
-    ESP_LOGI(TAG_MAIN, "Initializing weather client");
-    ESP_ERROR_CHECK(weather_client_init());
-    ESP_LOGI(TAG_MAIN, "Weather client ready");
-
-    ESP_LOGI(TAG_MAIN, "Initializing UI");
-    ret = ui_renderer_init();
-    if (ret != ESP_OK) {
-        halt_on_error("UI init", ret);
-    }
-    ESP_LOGI(TAG_MAIN, "UI ready");
-
     ESP_LOGI(TAG_MAIN, "Initializing audio player");
     ret = audio_player_init();
     if (ret != ESP_OK) {
@@ -141,18 +143,6 @@ void app_main(void)
     } else {
         ESP_LOGI(TAG_MAIN, "Audio player ready");
     }
-
-    xTaskCreatePinnedToCore(
-        ntp_task, "ntp",
-        TASK_STACK_NTP, NULL,
-        TASK_PRIO_NTP, NULL, 0);
-
-    xTaskCreatePinnedToCore(
-        weather_task, "weather",
-        TASK_STACK_WEATHER, NULL,
-        TASK_PRIO_WEATHER, NULL, 0);
-
-    start_ui_task_or_halt();
 
     ESP_LOGI(TAG_MAIN, "Tasks started");
     ESP_LOGI(TAG_MAIN, "Free heap: %lu KB", esp_get_free_heap_size() / 1024);

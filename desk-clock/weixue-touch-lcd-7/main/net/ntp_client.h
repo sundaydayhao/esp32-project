@@ -13,6 +13,7 @@ extern "C" {
 
 esp_err_t ntp_client_init(void);
 bool      ntp_client_is_synced(void);
+bool      ntp_client_has_valid_time(void);
 time_t    ntp_client_get_time(void);
 void      ntp_client_get_local_time(struct tm *tm_info);
 void      ntp_task(void *arg);

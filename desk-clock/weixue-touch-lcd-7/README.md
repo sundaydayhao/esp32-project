@@ -132,6 +132,8 @@ idf.py build
 idf.py -p COMx flash monitor
 ```
 
+默认 `idf.py flash` 会一并烧录 `fonts` SPIFFS 分区；更新 `main/font_fs` 里的字库文件后，重新执行同一条命令即可。
+
 ## 显示实现
 
 - 驱动文件：[main/lcd/lcd_driver.c](/D:/workspace/esp32_desk_clock/main/lcd/lcd_driver.c)
@@ -167,6 +169,8 @@ idf.py -p COMx flash monitor
 - `fonts`
 
 其中 `fonts` 是独立的 SPIFFS 数据分区，用于存放外部中文字库。完整 GB2312 字库不会编进 `app` 镜像，而是随 `build/fonts.bin` 单独烧录到 flash。
+
+注意：`build/fonts.bin` 是整个 SPIFFS 分区镜像，不是单个字库文件本身。为了避免每次 `idf.py flash` 都重复写整块字体分区，仓库默认把字体分区从常规 `flash` 流程里拆开了。
 
 ## 已知注意点
 
