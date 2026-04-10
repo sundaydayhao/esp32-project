@@ -1,0 +1,17 @@
+/**
+ * @file web_dashboard.h
+ * @brief Lightweight web portal for WiFi provisioning
+ */
+#pragma once
+
+#include "esp_err.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+esp_err_t web_dashboard_init(void);
+
+#ifdef __cplusplus
+}
+#endif

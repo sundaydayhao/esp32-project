@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Desk Clock 配网</title>
+  <style>
+    :root {
+      --bg-1: #eef5ea;
+      --bg-2: #f8efe2;
+      --ink: #17313a;
+      --muted: #5d6d70;
+      --card: rgba(255, 255, 255, 0.82);
+      --line: rgba(23, 49, 58, 0.08);
+      --accent: #1c6b5d;
+      --danger: #b44635;
+      --shadow: 0 20px 60px rgba(48, 63, 63, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "Trebuchet MS", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(28, 107, 93, 0.14), transparent 36%),
+        radial-gradient(circle at bottom right, rgba(240, 138, 64, 0.14), transparent 34%),
+        linear-gradient(180deg, var(--bg-1), var(--bg-2));
+    }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 18px 14px 32px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      border-radius: 28px;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+    }
+
+    .hero,
+    .section {
+      padding: 22px 18px;
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 10px 0;
+      font-size: 34px;
+      line-height: 1.04;
+    }
+
+    p {
+      margin: 0;
+      line-height: 1.6;
+    }
+
+    .muted { color: var(--muted); }
+
+    .badge-row,
+    .steps,
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .badge,
+    button {
+      border-radius: 999px;
+      border: 0;
+      padding: 10px 14px;
+      font-size: 14px;
+    }
+
+    .badge {
+      background: rgba(23, 49, 58, 0.07);
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .step,
+    .tip {
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+    }
+
+    .step strong,
+    label {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    input {
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid rgba(23, 49, 58, 0.12);
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--ink);
+      padding: 13px 14px;
+      font-size: 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: rgba(28, 107, 93, 0.42);
+      box-shadow: 0 0 0 4px rgba(28, 107, 93, 0.12);
+    }
+
+    .primary {
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .secondary {
+      background: rgba(23, 49, 58, 0.08);
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .danger {
+      background: rgba(180, 70, 53, 0.12);
+      color: var(--danger);
+      cursor: pointer;
+    }
+
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (min-width: 780px) {
+      main { padding: 28px 20px 42px; }
+      .grid { grid-template-columns: 1.1fr 0.9fr; }
+      .hero,
+      .section { padding: 28px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card hero">
+      <p class="eyebrow">Provisioning Mode</p>
+      <h1>时钟正在等待 Wi-Fi 配置</h1>
+      <p class="muted" id="headline">连接设备热点后，在这里提交 2.4G Wi-Fi 名称和密码。</p>
+      <div class="badge-row" style="margin-top:16px">
+        <span class="badge">热点 <strong id="apSsid">--</strong></span>
+        <span class="badge">地址 <strong id="configUrl">http://192.168.4.1/</strong></span>
+        <span class="badge">状态 <strong id="wifiState">--</strong></span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card section">
+        <p class="eyebrow">Setup</p>
+        <div class="steps" style="margin-top:12px">
+          <div class="step">
+            <strong>1. 连接热点</strong>
+            <p class="muted">手机连接上方显示的设备热点。</p>
+          </div>
+          <div class="step">
+            <strong>2. 提交家中 Wi-Fi</strong>
+            <p class="muted">输入 2.4G Wi-Fi 名称和密码，设备会自动切回 STA 模式联网。</p>
+          </div>
+          <div class="step">
+            <strong>3. 等待联网完成</strong>
+            <p class="muted">通常 10 到 30 秒内完成，成功后页面会显示设备新 IP。</p>
+          </div>
+        </div>
+
+        <div class="tip" style="margin-top:14px">
+          如果输入的密码不正确，设备会自动重试，并在多次认证失败后重新回到配网模式。
+        </div>
+      </article>
+
+      <article class="card section">
+        <p class="eyebrow">Wi-Fi Form</p>
+        <form id="wifiForm">
+          <label for="ssid">Wi-Fi 名称</label>
+          <input id="ssid" name="ssid" maxlength="63" autocomplete="off" placeholder="例如：MyHomeWiFi">
+
+          <label for="password">Wi-Fi 密码</label>
+          <input id="password" name="password" maxlength="63" type="password" autocomplete="current-password" placeholder="没有密码可留空">
+
+          <div class="actions" style="margin-top:4px">
+            <button type="submit" class="primary">保存并连接</button>
+            <button type="button" class="secondary" id="refreshBtn">刷新状态</button>
+            <button type="button" class="danger" id="resetBtn">清空并保持配网</button>
+          </div>
+          <div class="status" id="statusText"></div>
+        </form>
+
+        <div class="tip" style="margin-top:16px">
+          <div>已保存网络：<strong id="savedSsid">--</strong></div>
+          <div class="muted" style="margin-top:4px">提交后如果页面短暂断开，通常表示设备已退出热点并开始连接路由器。</div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const els = {
+      apSsid: document.getElementById('apSsid'),
+      configUrl: document.getElementById('configUrl'),
+      wifiState: document.getElementById('wifiState'),
+      savedSsid: document.getElementById('savedSsid'),
+      headline: document.getElementById('headline'),
+      statusText: document.getElementById('statusText'),
+      form: document.getElementById('wifiForm'),
+      ssid: document.getElementById('ssid'),
+      password: document.getElementById('password'),
+      refreshBtn: document.getElementById('refreshBtn'),
+      resetBtn: document.getElementById('resetBtn')
+    };
+
+    function setStatus(text, isError = false) {
+      els.statusText.textContent = text;
+      els.statusText.style.color = isError ? '#b44635' : '#5d6d70';
+    }
+
+    function stateText(payload) {
+      switch (payload.state) {
+        case 'connecting': return '正在连接';
+        case 'connected': return '已连接';
+        case 'configuring': return '等待配网';
+        case 'failed': return '连接失败';
+        default: return '未连接';
+      }
+    }
+
+    async function loadStatus() {
+      const response = await fetch('/api/wifi/status', { cache: 'no-store' });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+
+      const payload = await response.json();
+      els.apSsid.textContent = payload.ap_ssid || '--';
+      els.configUrl.textContent = payload.connected && payload.ip && payload.ip !== '0.0.0.0'
+        ? 'http://' + payload.ip + '/'
+        : (payload.config_url || 'http://192.168.4.1/');
+      els.wifiState.textContent = stateText(payload);
+      els.savedSsid.textContent = payload.saved_ssid || '未保存';
+
+      if (payload.connected && payload.ip && payload.ip !== '0.0.0.0') {
+        els.headline.textContent = '设备已联网，请改为访问 http://' + payload.ip + '/';
+        setStatus('联网成功，设备地址：http://' + payload.ip + '/');
+      } else if (payload.config_mode) {
+        els.headline.textContent = '当前已进入热点配网模式，连接设备热点后在此填写 Wi-Fi。';
+      } else if (payload.state === 'connecting') {
+        els.headline.textContent = '设备正在尝试连接 ' + (payload.saved_ssid || 'Wi-Fi') + '。';
+      } else if (payload.state === 'failed') {
+        els.headline.textContent = '设备连接失败，如为密码错误会自动回到配网模式。';
+      }
+    }
+
+    async function postJson(url, body) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {})
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || ('HTTP ' + response.status));
+      }
+
+      return response.json().catch(() => ({}));
+    }
+
+    els.form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const ssid = els.ssid.value.trim();
+      const password = els.password.value;
+
+      if (!ssid) {
+        setStatus('请先输入 Wi-Fi 名称。', true);
+        return;
+      }
+
+      try {
+        setStatus('正在保存凭据并切换到连接模式...');
+        await postJson('/api/wifi/config', { ssid, password });
+        setStatus('已提交，设备将退出热点并连接路由器，请等待 10 到 30 秒。');
+      } catch (error) {
+        setStatus('提交失败：' + error.message, true);
+      }
+    });
+
+    els.refreshBtn.addEventListener('click', async () => {
+      try {
+        await loadStatus();
+      } catch (error) {
+        setStatus('刷新失败：' + error.message, true);
+      }
+    });
+
+    els.resetBtn.addEventListener('click', async () => {
+      try {
+        setStatus('正在清空已保存 Wi-Fi...');
+        await postJson('/api/wifi/reset', {});
+        setStatus('已清空，设备保持在配网模式。');
+        await loadStatus();
+      } catch (error) {
+        setStatus('清空失败：' + error.message, true);
+      }
+    });
+
+    loadStatus().catch((error) => setStatus('读取状态失败：' + error.message, true));
+    setInterval(() => {
+      loadStatus().catch(() => {});
+    }, 5000);
+  </script>
+</body>
+</html>

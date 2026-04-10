@@ -9,18 +9,21 @@ idf_component_register(
         "ui/ui_renderer.c"
         "ui/ui_font_noto_sc_16.c"
         "storage/config_store.c"
+        "web/web_dashboard.c"
     INCLUDE_DIRS
         "."
         "lcd"
         "net"
         "ui"
         "storage"
+        "web"
     REQUIRES
         esp_lcd
         esp_driver_gpio
         esp_driver_i2c
         esp_wifi
         esp_http_client
+        esp_http_server
         lwip
         nvs_flash
         esp_timer
@@ -33,4 +36,5 @@ idf_component_register(
         mbedtls
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
+        "web/provision.html"
 )

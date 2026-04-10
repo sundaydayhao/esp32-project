@@ -13,7 +13,7 @@
 
 - `LVGL 9.2.2` UI，适配 `800x480 RGB565`
 - 数字时钟 + 模拟表盘联动刷新
-- Wi-Fi STA 自动连接和断线重连
+- Wi-Fi 自动配网：无凭据时启动 AP + Web 配网页面，已保存凭据时自动 STA 连接
 - NTP 自动同步，本地时区为 `CST-8`
 - QWeather HTTPS 请求
 - 实时天气：温度、体感、湿度、风速、能见度
@@ -48,14 +48,17 @@ esp32_desk_clock/
 │   │   ├── lcd_driver.c        # Waveshare RGB 显示驱动封装
 │   │   └── waveshare_board.c   # Waveshare 板级控制
 │   ├── net/
-│   │   ├── wifi_manager.c      # Wi-Fi STA
+│   │   ├── wifi_manager.c      # Wi-Fi STA/AP 自动配网状态机
 │   │   ├── ntp_client.c        # SNTP 同步
 │   │   └── weather_client.c    # QWeather HTTPS 客户端
 │   ├── storage/
 │   │   └── config_store.c      # NVS 配置读取
-│   └── ui/
-│       ├── ui_renderer.c       # LVGL UI 与刷新逻辑
-│       └── ui_font_noto_sc_16.c
+│   ├── ui/
+│   │   ├── ui_renderer.c       # LVGL UI 与刷新逻辑
+│   │   └── ui_font_noto_sc_16.c
+│   └── web/
+│       ├── web_dashboard.c     # 配网 HTTP 服务
+│       └── provision.html      # 配网页面
 ├── sdkconfig.defaults
 └── partitions.csv
 ```
@@ -75,8 +78,8 @@ esp32_desk_clock/
 默认编译配置位于 [main/config.h](/D:/workspace/esp32_desk_clock/main/config.h)：
 
 ```c
-#define CONFIG_WIFI_SSID_DEFAULT    "your_ssid"
-#define CONFIG_WIFI_PASS_DEFAULT    "your_password"
+#define CONFIG_WIFI_SSID_DEFAULT    ""
+#define CONFIG_WIFI_PASS_DEFAULT    ""
 
 #define WEATHER_API_KEY             "your_qweather_key"
 #define WEATHER_LOCATION_ID         "101280601"
@@ -87,6 +90,8 @@ esp32_desk_clock/
 
 - `WEATHER_API_HOST` 需要填写你在和风天气控制台分配的 Host
 - Wi-Fi、天气 Key、城市 ID 都支持从 NVS 读取覆盖默认值
+- 当 `wifi_cfg/ssid` 不存在且编译期默认 Wi-Fi 为空时，设备会自动开启热点 `DeskClock-xxxx`，并在 `http://192.168.4.1/` 提供配网页面
+- 如果保存的 Wi-Fi 多次认证失败，设备会自动退回配网模式，便于重新输入密码
 - 当前代码会在首次天气请求前等待有效 NTP 时间，避免 HTTPS 因系统时间错误而失败
 
 ### 2. TLS 与证书

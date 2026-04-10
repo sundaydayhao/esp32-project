@@ -13,6 +13,7 @@
 #include "net/wifi_manager.h"
 #include "storage/config_store.h"
 #include "ui/ui_renderer.h"
+#include "web/web_dashboard.h"
 
 #if SYSTEM_BOOT_MODE == BOOT_MODE_LCD_DIAGNOSTIC
 static void lcd_diag_task(void *arg)
@@ -106,6 +107,11 @@ void app_main(void)
     ret = wifi_manager_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG_MAIN, "WiFi init failed: %s", esp_err_to_name(ret));
+    } else {
+        ret = web_dashboard_init();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG_MAIN, "Web provisioning init failed: %s", esp_err_to_name(ret));
+        }
     }
 
     ESP_ERROR_CHECK(weather_client_init());

@@ -656,6 +656,12 @@ static void update_status_text(void)
         wifi_manager_get_ip(ip, sizeof(ip));
         snprintf(new_status, sizeof(new_status), "WiFi OK  %ddBm  %s  NTP%s",
                  wifi_manager_get_rssi(), ip, ntp_client_is_synced() ? "已同步" : "同步中");
+    } else if (wifi_manager_is_config_mode()) {
+        char ap_ssid[33] = "";
+        wifi_manager_get_ap_ssid(ap_ssid, sizeof(ap_ssid));
+        snprintf(new_status, sizeof(new_status), "配网中  %s  %s",
+                 ap_ssid[0] ? ap_ssid : "DeskClock",
+                 WIFI_PROV_AP_IP);
     } else {
         snprintf(new_status, sizeof(new_status), "WiFi...  NTP%s",
                  ntp_client_is_synced() ? "已同步" : "同步中");
