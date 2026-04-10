@@ -79,6 +79,14 @@ void app_main(void)
 
     uint8_t brightness = 100;
     config_store_get_u8(NVS_KEY_BRIGHTNESS, &brightness, 100);
+    if (brightness == 0) {
+        ESP_LOGW(TAG_MAIN, "Stored brightness is 0, forcing panel on");
+        brightness = 100;
+        ret = config_store_set_u8(NVS_KEY_BRIGHTNESS, brightness);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG_MAIN, "Failed to persist fallback brightness: %s", esp_err_to_name(ret));
+        }
+    }
     lcd_driver_set_brightness(brightness);
 
 #if SYSTEM_BOOT_MODE == BOOT_MODE_LCD_DIAGNOSTIC
@@ -115,16 +123,23 @@ void app_main(void)
         }
     }
 
+    ESP_LOGI(TAG_MAIN, "Initializing weather client");
     ESP_ERROR_CHECK(weather_client_init());
+    ESP_LOGI(TAG_MAIN, "Weather client ready");
 
-    ret = audio_player_init();
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG_MAIN, "Audio player init failed: %s (continuing without audio)", esp_err_to_name(ret));
-    }
-
+    ESP_LOGI(TAG_MAIN, "Initializing UI");
     ret = ui_renderer_init();
     if (ret != ESP_OK) {
         halt_on_error("UI init", ret);
+    }
+    ESP_LOGI(TAG_MAIN, "UI ready");
+
+    ESP_LOGI(TAG_MAIN, "Initializing audio player");
+    ret = audio_player_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG_MAIN, "Audio player init failed: %s (continuing without audio)", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG_MAIN, "Audio player ready");
     }
 
     xTaskCreatePinnedToCore(

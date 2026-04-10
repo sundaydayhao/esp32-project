@@ -159,11 +159,14 @@ idf.py -p COMx flash monitor
 - `PSRAM`
 - 推荐 `8MB PSRAM` 或更高
 
-分区表见 [partitions.csv](/D:/workspace/esp32_desk_clock/partitions.csv)，当前为单应用分区：
+分区表见 [partitions.csv](/D:/workspace/esp32_desk_clock/partitions.csv)，当前包含应用分区和独立字体分区：
 
 - `nvs`
 - `phy_init`
 - `factory`
+- `fonts`
+
+其中 `fonts` 是独立的 SPIFFS 数据分区，用于存放外部中文字库。完整 GB2312 字库不会编进 `app` 镜像，而是随 `build/fonts.bin` 单独烧录到 flash。
 
 ## 已知注意点
 

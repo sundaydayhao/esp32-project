@@ -30,6 +30,7 @@ esp_err_t ui_music_player_create(lv_obj_t *parent,
  * @brief Update music player UI with current status
  */
 void ui_music_player_update(void);
+void ui_music_player_refresh_fonts(void);
 
 /**
  * @brief Get the music player panel object

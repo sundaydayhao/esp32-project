@@ -18,9 +18,8 @@
 #include "net/ntp_client.h"
 #include "net/weather_client.h"
 #include "net/wifi_manager.h"
+#include "ui/ui_font_manager.h"
 #include "ui/ui_music_player.h"
-
-LV_FONT_DECLARE(ui_font_noto_sc_16);
 
 #define LVGL_TICK_PERIOD_MS 5
 #define UI_MIN_DELAY_MS 10
@@ -29,6 +28,7 @@ LV_FONT_DECLARE(ui_font_noto_sc_16);
 #define UI_CLOCK_UPDATE_MS 1000
 #define UI_WEATHER_UPDATE_MS 30000
 #define UI_MUSIC_UPDATE_MS 1000
+#define UI_FONT_DEFERRED_LOAD_MS 5000
 #define UI_FLUSH_TIMEOUT_MS 1000
 #define UI_PI 3.14159265358979323846f
 #define UI_DEGREE_SYMBOL "\xC2\xB0"
@@ -44,6 +44,7 @@ typedef enum {
 
 typedef struct {
     lv_obj_t *status_label;
+    lv_obj_t *battery_label;
     lv_obj_t *time_label;
     lv_obj_t *date_label;
     lv_obj_t *clock_hour_hand;
@@ -67,6 +68,7 @@ typedef struct {
     lv_obj_t *forecast_temp[3];
 
     char status_text[96];
+    char battery_text[24];
     char time_text[16];
     char date_text[40];
     char weather_title_text[48];
@@ -86,6 +88,7 @@ static esp_timer_handle_t s_lvgl_tick_timer = NULL;
 static ui_state_t s_ui = {0};
 static uint32_t s_flush_count = 0;
 static volatile TaskHandle_t s_flush_wait_task = NULL;
+static bool s_deferred_font_load_done = false;
 
 static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t storage_size, const char *text)
 {
@@ -100,6 +103,19 @@ static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t sto
     strlcpy(storage, text, storage_size);
     lv_label_set_text_static(label, storage);
     return true;
+}
+
+static int wifi_signal_percent(int8_t rssi)
+{
+    if (rssi <= -100) {
+        return 0;
+    }
+
+    if (rssi >= -50) {
+        return 100;
+    }
+
+    return (int)((rssi + 100) * 2);
 }
 
 static const char *weekday_cn(int wday)
@@ -227,8 +243,7 @@ static void style_panel(lv_obj_t *obj)
 
 static void style_small_cjk_label(lv_obj_t *obj, lv_color_t color)
 {
-    /* Use one Simplified Chinese font for mixed Chinese/ASCII small text. */
-    lv_obj_set_style_text_font(obj, &ui_font_noto_sc_16, 0);
+    lv_obj_set_style_text_font(obj, ui_font_manager_get_font_16(), 0);
     lv_obj_set_style_text_color(obj, color, 0);
 }
 
@@ -400,7 +415,7 @@ static void create_clock_visual(lv_obj_t *parent)
 
     lv_obj_t *face = lv_obj_create(parent);
     lv_obj_set_size(face, face_size, face_size);
-    lv_obj_set_pos(face, 38, 140);
+    lv_obj_set_pos(face, 38, 30);
     lv_obj_set_style_radius(face, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(face, 2, 0);
     lv_obj_set_style_border_color(face, lv_color_hex(0x325A76), 0);
@@ -586,9 +601,14 @@ static void create_ui(void)
     lv_obj_set_style_pad_ver(status_bar, 8, 0);
 
     s_ui.status_label = lv_label_create(status_bar);
-    lv_obj_set_style_text_font(s_ui.status_label, &ui_font_noto_sc_16, 0);
+    lv_obj_set_style_text_font(s_ui.status_label, ui_font_manager_get_font_16(), 0);
     lv_obj_set_style_text_color(s_ui.status_label, lv_color_hex(0xB9C7D8), 0);
     lv_obj_align(s_ui.status_label, LV_ALIGN_LEFT_MID, 0, 0);
+
+    s_ui.battery_label = lv_label_create(status_bar);
+    lv_obj_set_style_text_font(s_ui.battery_label, ui_font_manager_get_font_16(), 0);
+    lv_obj_set_style_text_color(s_ui.battery_label, lv_color_hex(0xB9C7D8), 0);
+    lv_obj_align(s_ui.battery_label, LV_ALIGN_RIGHT_MID, 0, 0);
 
     lv_obj_t *left_panel = lv_obj_create(screen);
     lv_obj_set_size(left_panel, clock_panel_w, panel_h);
@@ -601,19 +621,17 @@ static void create_ui(void)
     lv_label_set_text(clock_title, "时间");
 
     s_ui.time_label = lv_label_create(left_panel);
+    lv_obj_set_width(s_ui.time_label, LV_PCT(100));
     lv_obj_set_style_text_font(s_ui.time_label, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(s_ui.time_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_pos(s_ui.time_label, 0, 32);
+    lv_obj_set_style_text_align(s_ui.time_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_ui.time_label, 0, 224);
 
     s_ui.date_label = lv_label_create(left_panel);
-    lv_obj_set_pos(s_ui.date_label, 0, 90);
-    lv_obj_set_width(s_ui.date_label, 230);
+    lv_obj_set_pos(s_ui.date_label, 0, 284);
+    lv_obj_set_width(s_ui.date_label, LV_PCT(100));
     style_small_cjk_label(s_ui.date_label, lv_color_hex(0xA7B5C8));
-
-    lv_obj_t *clock_desc = lv_label_create(left_panel);
-    lv_obj_set_pos(clock_desc, 0, 118);
-    style_small_cjk_label(clock_desc, lv_color_hex(0x7D92A9));
-    lv_label_set_text(clock_desc, "数字时钟 / 模拟表盘");
+    lv_obj_set_style_text_align(s_ui.date_label, LV_TEXT_ALIGN_CENTER, 0);
 
     create_clock_visual(left_panel);
 
@@ -625,7 +643,7 @@ static void create_ui(void)
     lv_obj_t *weather_head = lv_label_create(weather_panel);
     lv_obj_set_pos(weather_head, 0, 0);
     style_small_cjk_label(weather_head, lv_color_hex(0x68C1FF));
-    lv_label_set_text(weather_head, "实时天气");
+    lv_label_set_text(weather_head, "天气");
 
     s_ui.weather_title = lv_label_create(weather_panel);
     lv_obj_set_pos(s_ui.weather_title, 0, 26);
@@ -670,24 +688,23 @@ static void create_ui(void)
 static void update_status_text(void)
 {
     char new_status[sizeof(s_ui.status_text)];
+    char new_battery[sizeof(s_ui.battery_text)];
 
     if (wifi_manager_is_connected()) {
         char ip[20] = "";
+        int quality = wifi_signal_percent(wifi_manager_get_rssi());
         wifi_manager_get_ip(ip, sizeof(ip));
-        snprintf(new_status, sizeof(new_status), "WiFi OK  %ddBm  %s  NTP%s",
-                 wifi_manager_get_rssi(), ip, ntp_client_is_synced() ? "已同步" : "同步中");
+        snprintf(new_status, sizeof(new_status), "WiFi %d%%  %s", quality, ip);
     } else if (wifi_manager_is_config_mode()) {
-        char ap_ssid[33] = "";
-        wifi_manager_get_ap_ssid(ap_ssid, sizeof(ap_ssid));
-        snprintf(new_status, sizeof(new_status), "配网中  %s  %s",
-                 ap_ssid[0] ? ap_ssid : "DeskClock",
-                 WIFI_PROV_AP_IP);
+        snprintf(new_status, sizeof(new_status), "WiFi AP  %s", WIFI_PROV_AP_IP);
     } else {
-        snprintf(new_status, sizeof(new_status), "WiFi...  NTP%s",
-                 ntp_client_is_synced() ? "已同步" : "同步中");
+        snprintf(new_status, sizeof(new_status), "WiFi --");
     }
 
+    snprintf(new_battery, sizeof(new_battery), "电量 --");
+
     set_label_text_if_changed(s_ui.status_label, s_ui.status_text, sizeof(s_ui.status_text), new_status);
+    set_label_text_if_changed(s_ui.battery_label, s_ui.battery_text, sizeof(s_ui.battery_text), new_battery);
 }
 
 static void update_clock_text(void)
@@ -779,8 +796,52 @@ static void update_all_ui_text(void)
     update_weather_text();
 }
 
+static void refresh_runtime_fonts(void)
+{
+    const lv_font_t *font = ui_font_manager_get_font_16();
+
+    if (s_ui.status_label) {
+        lv_obj_set_style_text_font(s_ui.status_label, font, 0);
+    }
+    if (s_ui.battery_label) {
+        lv_obj_set_style_text_font(s_ui.battery_label, font, 0);
+    }
+    if (s_ui.date_label) {
+        lv_obj_set_style_text_font(s_ui.date_label, font, 0);
+    }
+    if (s_ui.weather_title) {
+        lv_obj_set_style_text_font(s_ui.weather_title, font, 0);
+    }
+    if (s_ui.weather_cond) {
+        lv_obj_set_style_text_font(s_ui.weather_cond, font, 0);
+    }
+    if (s_ui.detail_humidity) {
+        lv_obj_set_style_text_font(s_ui.detail_humidity, font, 0);
+    }
+    if (s_ui.detail_feels) {
+        lv_obj_set_style_text_font(s_ui.detail_feels, font, 0);
+    }
+    if (s_ui.detail_wind) {
+        lv_obj_set_style_text_font(s_ui.detail_wind, font, 0);
+    }
+    if (s_ui.detail_vis) {
+        lv_obj_set_style_text_font(s_ui.detail_vis, font, 0);
+    }
+    for (int i = 0; i < 3; i++) {
+        if (s_ui.forecast_date[i]) {
+            lv_obj_set_style_text_font(s_ui.forecast_date[i], font, 0);
+        }
+        if (s_ui.forecast_cond[i]) {
+            lv_obj_set_style_text_font(s_ui.forecast_cond[i], font, 0);
+        }
+    }
+
+    ui_music_player_refresh_fonts();
+}
+
 esp_err_t ui_renderer_init(void)
 {
+    esp_err_t ret;
     esp_lcd_panel_handle_t panel = lcd_driver_get_panel();
     uint16_t *fb0 = NULL;
     uint16_t *fb1 = NULL;
@@ -801,8 +862,16 @@ esp_err_t ui_renderer_init(void)
         render_mode = LV_DISPLAY_RENDER_MODE_DIRECT;
     }
 
+    ESP_LOGI(TAG_UI, "ui_renderer_init: lv_init");
     lv_init();
 
+    ESP_LOGI(TAG_UI, "ui_renderer_init: font manager init");
+    ret = ui_font_manager_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG_UI, "External font init failed, using built-in fallback: %s", esp_err_to_name(ret));
+    }
+
+    ESP_LOGI(TAG_UI, "ui_renderer_init: display create");
     s_display = lv_display_create(LCD_H_RES, LCD_V_RES);
     lv_display_set_user_data(s_display, panel);
     lv_display_set_color_format(s_display, LV_COLOR_FORMAT_RGB565);
@@ -822,9 +891,12 @@ esp_err_t ui_renderer_init(void)
     ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_lvgl_tick_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(s_lvgl_tick_timer, LVGL_TICK_PERIOD_MS * 1000));
 
+    ESP_LOGI(TAG_UI, "ui_renderer_init: create ui");
     create_ui();
+    ESP_LOGI(TAG_UI, "ui_renderer_init: populate text");
     update_all_ui_text();
     lv_obj_invalidate(lv_screen_active());
+    ESP_LOGI(TAG_UI, "ui_renderer_init: first lv_timer_handler");
     (void)lv_timer_handler();
 
     ESP_LOGI(TAG_UI, "LVGL UI initialized panel=%p fb0=%p fb1=%p size=%u mode=%s",
@@ -844,6 +916,20 @@ void ui_renderer_task(void *arg)
     while (1) {
         int64_t now_us = esp_timer_get_time();
         uint32_t delay_ms;
+
+        if (!s_deferred_font_load_done && now_us >= (int64_t)UI_FONT_DEFERRED_LOAD_MS * 1000) {
+            s_deferred_font_load_done = true;
+            ESP_LOGI(TAG_UI, "Deferred external font load start");
+            if (ui_font_manager_load_external() == ESP_OK) {
+                refresh_runtime_fonts();
+                update_all_ui_text();
+                ui_music_player_update();
+                lv_obj_invalidate(lv_screen_active());
+                ESP_LOGI(TAG_UI, "Deferred external font load complete");
+            } else {
+                ESP_LOGW(TAG_UI, "Deferred external font load skipped or failed");
+            }
+        }
 
         if (last_status_update_us == 0 || now_us - last_status_update_us >= (int64_t)UI_STATUS_UPDATE_MS * 1000) {
             update_status_text();

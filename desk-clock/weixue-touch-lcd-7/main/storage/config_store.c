@@ -26,6 +26,16 @@ esp_err_t config_store_get_u8(const char *key, uint8_t *val, uint8_t def)
     return ret;
 }
 
+esp_err_t config_store_set_u8(const char *key, uint8_t val)
+{
+    esp_err_t ret = nvs_set_u8(s_handle, key, val);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return nvs_commit(s_handle);
+}
+
 esp_err_t config_store_get_str(const char *key, char *buf, size_t len)
 {
     return nvs_get_str(s_handle, key, buf, &len);

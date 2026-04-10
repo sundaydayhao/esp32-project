@@ -8,6 +8,7 @@ idf_component_register(
         "net/weather_client.c"
         "ui/ui_renderer.c"
         "ui/ui_font_noto_sc_16.c"
+        "ui/ui_font_manager.c"
         "ui/ui_music_player.c"
         "storage/config_store.c"
         "web/web_dashboard.c"
@@ -40,8 +41,11 @@ idf_component_register(
         mbedtls
         fatfs
         sdmmc
+        spiffs
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
         "web/dashboard.html"
         "web/provision.html"
 )
+
+spiffs_create_partition_image(fonts font_fs FLASH_IN_PROJECT)

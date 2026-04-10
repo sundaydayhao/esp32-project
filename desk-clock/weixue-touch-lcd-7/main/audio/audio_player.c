@@ -297,6 +297,10 @@ esp_err_t audio_player_scan_files(void)
 
 esp_err_t audio_player_play(void)
 {
+    if (!s_status_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
         if (s_status.total_tracks == 0) {
             xSemaphoreGive(s_status_mutex);
@@ -314,6 +318,10 @@ esp_err_t audio_player_play(void)
 
 esp_err_t audio_player_pause(void)
 {
+    if (!s_status_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
         s_status.state = AUDIO_STATE_PAUSED;
         xSemaphoreGive(s_status_mutex);
@@ -326,6 +334,10 @@ esp_err_t audio_player_pause(void)
 
 esp_err_t audio_player_stop(void)
 {
+    if (!s_status_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
         s_status.state = AUDIO_STATE_STOPPED;
         s_status.current_info.position_sec = 0;
@@ -339,6 +351,10 @@ esp_err_t audio_player_stop(void)
 
 esp_err_t audio_player_next(void)
 {
+    if (!s_status_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
         if (s_status.current_track < s_status.total_tracks - 1) {
             s_status.current_track++;
@@ -365,6 +381,10 @@ esp_err_t audio_player_next(void)
 
 esp_err_t audio_player_prev(void)
 {
+    if (!s_status_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
         if (s_status.current_track > 0) {
             s_status.current_track--;
@@ -395,6 +415,10 @@ esp_err_t audio_player_set_volume(uint8_t volume)
         volume = 100;
     }
 
+    if (!s_status_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
         s_status.volume = volume;
         xSemaphoreGive(s_status_mutex);
@@ -409,6 +433,11 @@ esp_err_t audio_player_get_status(audio_player_status_t *status)
 {
     if (!status) {
         return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!s_status_mutex) {
+        memcpy(status, &s_status, sizeof(audio_player_status_t));
+        return ESP_OK;
     }
 
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {

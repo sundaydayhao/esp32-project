@@ -11,9 +11,7 @@
 #include "config.h"
 #include "esp_log.h"
 #include "lvgl.h"
-
-LV_FONT_DECLARE(ui_font_noto_sc_16);
-LV_FONT_DECLARE(lv_font_simsun_16_cjk);
+#include "ui_font_manager.h"
 
 typedef struct {
     lv_obj_t *panel;
@@ -61,85 +59,14 @@ static void style_music_button(lv_obj_t *obj, lv_color_t color)
 
 static void style_small_label(lv_obj_t *obj, lv_color_t color)
 {
-    lv_obj_set_style_text_font(obj, &ui_font_noto_sc_16, 0);
+    lv_obj_set_style_text_font(obj, ui_font_manager_get_font_16(), 0);
     lv_obj_set_style_text_color(obj, color, 0);
 }
 
 static void style_music_text_label(lv_obj_t *obj, lv_color_t color)
 {
-    lv_obj_set_style_text_font(obj, &lv_font_simsun_16_cjk, 0);
+    lv_obj_set_style_text_font(obj, ui_font_manager_get_font_16(), 0);
     lv_obj_set_style_text_color(obj, color, 0);
-}
-
-static uint32_t utf8_next_codepoint(const char *text, size_t *offset)
-{
-    const unsigned char *bytes = (const unsigned char *)text;
-    unsigned char c = bytes[*offset];
-
-    if (c == '\0') {
-        return 0;
-    }
-
-    if ((c & 0x80u) == 0) {
-        (*offset)++;
-        return c;
-    }
-
-    if ((c & 0xE0u) == 0xC0u && (bytes[*offset + 1] & 0xC0u) == 0x80u) {
-        uint32_t cp = ((uint32_t)(c & 0x1Fu) << 6) |
-                      (uint32_t)(bytes[*offset + 1] & 0x3Fu);
-        *offset += 2;
-        return cp;
-    }
-
-    if ((c & 0xF0u) == 0xE0u &&
-        (bytes[*offset + 1] & 0xC0u) == 0x80u &&
-        (bytes[*offset + 2] & 0xC0u) == 0x80u) {
-        uint32_t cp = ((uint32_t)(c & 0x0Fu) << 12) |
-                      ((uint32_t)(bytes[*offset + 1] & 0x3Fu) << 6) |
-                      (uint32_t)(bytes[*offset + 2] & 0x3Fu);
-        *offset += 3;
-        return cp;
-    }
-
-    if ((c & 0xF8u) == 0xF0u &&
-        (bytes[*offset + 1] & 0xC0u) == 0x80u &&
-        (bytes[*offset + 2] & 0xC0u) == 0x80u &&
-        (bytes[*offset + 3] & 0xC0u) == 0x80u) {
-        uint32_t cp = ((uint32_t)(c & 0x07u) << 18) |
-                      ((uint32_t)(bytes[*offset + 1] & 0x3Fu) << 12) |
-                      ((uint32_t)(bytes[*offset + 2] & 0x3Fu) << 6) |
-                      (uint32_t)(bytes[*offset + 3] & 0x3Fu);
-        *offset += 4;
-        return cp;
-    }
-
-    (*offset)++;
-    return 0xFFFD;
-}
-
-static bool font_can_render_text(const lv_font_t *font, const char *text)
-{
-    size_t offset = 0;
-
-    if (!font || !text) {
-        return false;
-    }
-
-    while (text[offset] != '\0') {
-        lv_font_glyph_dsc_t glyph = {0};
-        uint32_t codepoint = utf8_next_codepoint(text, &offset);
-
-        if (codepoint == 0) {
-            break;
-        }
-
-        if (!lv_font_get_glyph_dsc(font, &glyph, codepoint, 0) || glyph.is_placeholder) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 static void btn_prev_event_cb(lv_event_t *e)
@@ -220,7 +147,7 @@ esp_err_t ui_music_player_create(lv_obj_t *parent,
     s_music_ui.title_label = lv_label_create(s_music_ui.panel);
     lv_obj_set_pos(s_music_ui.title_label, 0, 0);
     style_small_label(s_music_ui.title_label, lv_color_hex(0x68C1FF));
-    lv_label_set_text(s_music_ui.title_label, "歌曲控制");
+    lv_label_set_text(s_music_ui.title_label, "音乐播放");
 
     s_music_ui.album_art = lv_obj_create(s_music_ui.panel);
     lv_obj_set_size(s_music_ui.album_art, album_size, album_size);
@@ -338,16 +265,11 @@ void ui_music_player_update(void)
 
     // Update track name
     if (status.total_tracks > 0 && status.current_info.title[0] != '\0') {
-        if (font_can_render_text(&lv_font_simsun_16_cjk, status.current_info.title)) {
-            snprintf(s_music_ui.track_text, sizeof(s_music_ui.track_text),
-                     "%s", status.current_info.title);
-        } else {
-            snprintf(s_music_ui.track_text, sizeof(s_music_ui.track_text),
-                     "当前文件 %02d", status.current_track + 1);
-        }
+        snprintf(s_music_ui.track_text, sizeof(s_music_ui.track_text),
+                 "%s", status.current_info.title);
     } else {
         snprintf(s_music_ui.track_text, sizeof(s_music_ui.track_text),
-                 "未找到歌曲");
+                 "无音乐文件");
     }
 
     if (s_music_ui.track_label && strcmp(lv_label_get_text(s_music_ui.track_label), s_music_ui.track_text) != 0) {
@@ -392,10 +314,10 @@ void ui_music_player_update(void)
                  status.current_track + 1, status.total_tracks, status.volume);
     } else if (audio_player_is_sd_mounted()) {
         snprintf(s_music_ui.status_text, sizeof(s_music_ui.status_text),
-                 "SD盘可用  未找到歌曲");
+                 "SD卡已挂载，未找到音乐");
     } else {
         snprintf(s_music_ui.status_text, sizeof(s_music_ui.status_text),
-                 "SD盘不可用");
+                 "SD卡未插入");
     }
 
     if (s_music_ui.status_label && strcmp(lv_label_get_text(s_music_ui.status_label), s_music_ui.status_text) != 0) {
@@ -404,6 +326,24 @@ void ui_music_player_update(void)
 
     if (s_music_ui.volume_slider && lv_slider_get_value(s_music_ui.volume_slider) != status.volume) {
         lv_slider_set_value(s_music_ui.volume_slider, status.volume, LV_ANIM_OFF);
+    }
+}
+
+void ui_music_player_refresh_fonts(void)
+{
+    const lv_font_t *font = ui_font_manager_get_font_16();
+
+    if (s_music_ui.title_label) {
+        lv_obj_set_style_text_font(s_music_ui.title_label, font, 0);
+    }
+    if (s_music_ui.track_label) {
+        lv_obj_set_style_text_font(s_music_ui.track_label, font, 0);
+    }
+    if (s_music_ui.time_label) {
+        lv_obj_set_style_text_font(s_music_ui.time_label, font, 0);
+    }
+    if (s_music_ui.status_label) {
+        lv_obj_set_style_text_font(s_music_ui.status_label, font, 0);
     }
 }
 
