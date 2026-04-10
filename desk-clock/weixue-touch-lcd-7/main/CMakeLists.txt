@@ -8,8 +8,10 @@ idf_component_register(
         "net/weather_client.c"
         "ui/ui_renderer.c"
         "ui/ui_font_noto_sc_16.c"
+        "ui/ui_music_player.c"
         "storage/config_store.c"
         "web/web_dashboard.c"
+        "audio/audio_player.c"
     INCLUDE_DIRS
         "."
         "lcd"
@@ -17,10 +19,12 @@ idf_component_register(
         "ui"
         "storage"
         "web"
+        "audio"
     REQUIRES
         esp_lcd
         esp_driver_gpio
         esp_driver_i2c
+        esp_driver_spi
         esp_wifi
         esp_http_client
         esp_http_server
@@ -34,6 +38,8 @@ idf_component_register(
         heap
         json
         mbedtls
+        fatfs
+        sdmmc
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
         "web/provision.html"

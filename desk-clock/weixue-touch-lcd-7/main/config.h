@@ -115,6 +115,15 @@
 #define TAG_UI          "UI"
 #define TAG_STORE       "STORE"
 #define TAG_WEB         "WEB"
+#define TAG_AUDIO       "AUDIO"
+
+/* ================================================================
+ * SD Card (for audio player)
+ * ================================================================ */
+#define SD_PIN_MOSI     GPIO_NUM_11
+#define SD_PIN_MISO     GPIO_NUM_13
+#define SD_PIN_CLK      GPIO_NUM_12
+#define SD_PIN_CS       GPIO_NUM_10
 
 /* ================================================================
  * Web provisioning
@@ -128,7 +137,9 @@
 #define TASK_STACK_LCD_DIAG     (4  * 1024)
 #define TASK_STACK_WEATHER      (16 * 1024)
 #define TASK_STACK_NTP          (4  * 1024)
+#define TASK_STACK_AUDIO        (4  * 1024)
 #define TASK_PRIO_LCD_DIAG      3
 #define TASK_PRIO_UI            7
 #define TASK_PRIO_WEATHER       4
 #define TASK_PRIO_NTP           5
+#define TASK_PRIO_AUDIO         5

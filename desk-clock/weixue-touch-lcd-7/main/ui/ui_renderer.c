@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "audio/audio_player.h"
 #include "config.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
@@ -17,6 +18,7 @@
 #include "net/ntp_client.h"
 #include "net/weather_client.h"
 #include "net/wifi_manager.h"
+#include "ui/ui_music_player.h"
 
 LV_FONT_DECLARE(ui_font_noto_sc_16);
 
@@ -26,6 +28,7 @@ LV_FONT_DECLARE(ui_font_noto_sc_16);
 #define UI_STATUS_UPDATE_MS 2000
 #define UI_CLOCK_UPDATE_MS 1000
 #define UI_WEATHER_UPDATE_MS 30000
+#define UI_MUSIC_UPDATE_MS 1000
 #define UI_FLUSH_TIMEOUT_MS 1000
 #define UI_PI 3.14159265358979323846f
 #define UI_DEGREE_SYMBOL "\xC2\xB0"
@@ -645,6 +648,9 @@ static void create_ui(void)
     create_forecast_card(right_panel, 2, 168);
 
     set_label_text_if_changed(s_ui.weather_title, s_ui.weather_title_text, sizeof(s_ui.weather_title_text), "天气");
+
+    // Create music player UI
+    ui_music_player_create(screen);
 }
 
 static void update_status_text(void)
@@ -818,6 +824,7 @@ void ui_renderer_task(void *arg)
     int64_t last_status_update_us = 0;
     int64_t last_clock_update_us = 0;
     int64_t last_weather_update_us = 0;
+    int64_t last_music_update_us = 0;
     LV_UNUSED(arg);
 
     while (1) {
@@ -837,6 +844,11 @@ void ui_renderer_task(void *arg)
         if (last_weather_update_us == 0 || now_us - last_weather_update_us >= (int64_t)UI_WEATHER_UPDATE_MS * 1000) {
             update_weather_text();
             last_weather_update_us = now_us;
+        }
+
+        if (last_music_update_us == 0 || now_us - last_music_update_us >= (int64_t)UI_MUSIC_UPDATE_MS * 1000) {
+            ui_music_player_update();
+            last_music_update_us = now_us;
         }
 
         delay_ms = lv_timer_handler();

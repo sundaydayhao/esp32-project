@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
+#include "audio/audio_player.h"
 #include "config.h"
 #include "lcd/lcd_driver.h"
 #include "net/ntp_client.h"
@@ -115,6 +116,11 @@ void app_main(void)
     }
 
     ESP_ERROR_CHECK(weather_client_init());
+
+    ret = audio_player_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG_MAIN, "Audio player init failed: %s (continuing without audio)", esp_err_to_name(ret));
+    }
 
     ret = ui_renderer_init();
     if (ret != ESP_OK) {
