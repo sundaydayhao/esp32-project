@@ -17,6 +17,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "lcd/waveshare_board.h"
 #include "sdmmc_cmd.h"
 
 #define SD_MOUNT_POINT "/sdcard"
@@ -94,6 +95,12 @@ static esp_err_t mount_sd_card(void)
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.max_freq_khz = SDMMC_FREQ_PROBING;
 
+    ret = waveshare_board_set_sd_card_selected(true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to select SD card through CH422G: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = SD_PIN_MOSI,
         .miso_io_num = SD_PIN_MISO,
@@ -106,11 +113,12 @@ static esp_err_t mount_sd_card(void)
     ret = spi_bus_initialize(host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize SPI bus: %s", esp_err_to_name(ret));
+        (void)waveshare_board_set_sd_card_selected(false);
         return ret;
     }
 
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = SD_PIN_CS;
+    slot_config.gpio_cs = SDSPI_SLOT_NO_CS;
     slot_config.host_id = host.slot;
 
     ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config, &mount_config, &s_card);
@@ -121,6 +129,7 @@ static esp_err_t mount_sd_card(void)
             ESP_LOGE(TAG, "Failed to initialize SD card: %s", esp_err_to_name(ret));
         }
         spi_bus_free(host.slot);
+        (void)waveshare_board_set_sd_card_selected(false);
         return ret;
     }
 
@@ -136,6 +145,7 @@ static void unmount_sd_card(void)
     if (s_sd_mounted) {
         esp_vfs_fat_sdcard_unmount(SD_MOUNT_POINT, s_card);
         spi_bus_free(SDSPI_DEFAULT_HOST);
+        (void)waveshare_board_set_sd_card_selected(false);
         s_sd_mounted = false;
         ESP_LOGI(TAG, "SD card unmounted");
     }

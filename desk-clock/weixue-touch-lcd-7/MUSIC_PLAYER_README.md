@@ -40,10 +40,10 @@
 SD_PIN_MOSI  -> GPIO 11
 SD_PIN_MISO  -> GPIO 13
 SD_PIN_CLK   -> GPIO 12
-SD_PIN_CS    -> GPIO 10
+SD_PIN_CS    -> 由板载 CH422G 的 EXIO4 控制，不是原生 GPIO
 ```
 
-**注意**：这些引脚配置可能需要根据您的实际硬件进行调整。请确保这些GPIO引脚未被LCD或其他外设占用。
+**注意**：在 `Waveshare ESP32-S3-Touch-LCD-7` 上，TF 卡的 `CS` 不是 `GPIO10`。`GPIO10` 已被 RGB LCD 数据线占用，错误地把它当作 SD `CS` 会导致初始化超时。
 
 ### 推荐的SD卡模块
 

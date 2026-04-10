@@ -10,6 +10,7 @@ extern "C" {
 
 esp_err_t waveshare_board_init(void);
 esp_err_t waveshare_board_set_lcd_state(bool display_on);
+esp_err_t waveshare_board_set_sd_card_selected(bool selected);
 
 #ifdef __cplusplus
 }

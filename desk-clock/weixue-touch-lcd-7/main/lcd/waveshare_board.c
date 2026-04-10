@@ -85,3 +85,9 @@ esp_err_t waveshare_board_set_lcd_state(bool display_on)
     ESP_RETURN_ON_ERROR(set_pin(WAVESHARE_PIN_SD_CS, true), TAG, "set SD_CS failed");
     return set_pin(WAVESHARE_PIN_LCD_BL, display_on);
 }
+
+esp_err_t waveshare_board_set_sd_card_selected(bool selected)
+{
+    ESP_RETURN_ON_ERROR(waveshare_board_init(), TAG, "board init failed");
+    return set_pin(WAVESHARE_PIN_SD_CS, !selected);
+}

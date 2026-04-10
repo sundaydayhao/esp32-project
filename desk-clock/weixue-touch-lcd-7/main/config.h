@@ -124,7 +124,8 @@
 #define SD_PIN_MOSI     GPIO_NUM_11
 #define SD_PIN_MISO     GPIO_NUM_13
 #define SD_PIN_CLK      GPIO_NUM_12
-#define SD_PIN_CS       GPIO_NUM_10
+/* Board TF card CS is routed through CH422G EXIO4, not a native GPIO. */
+#define SD_PIN_CS       GPIO_NUM_NC
 
 /* ================================================================
  * Web provisioning
