@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Desk Clock 天气看板</title>
+  <style>
+    :root {
+      --bg-top: #f4eee3;
+      --bg-bottom: #f7f4ef;
+      --ink: #1c2b2d;
+      --muted: #607072;
+      --card: rgba(255, 255, 255, 0.78);
+      --line: rgba(28, 43, 45, 0.08);
+      --temp-main: #e46f46;
+      --temp-sub: #c2352a;
+      --hum-main: #2490a7;
+      --accent: #1c2b2d;
+      --chip: rgba(28, 43, 45, 0.08);
+      --shadow: 0 18px 50px rgba(68, 53, 36, 0.12);
+      --danger: #b44635;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "Trebuchet MS", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(228, 111, 70, 0.14), transparent 30%),
+        radial-gradient(circle at top left, rgba(36, 144, 167, 0.14), transparent 35%),
+        linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      border-radius: 999px;
+      filter: blur(10px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::before {
+      width: 180px;
+      height: 180px;
+      right: -50px;
+      top: 12vh;
+      background: rgba(228, 111, 70, 0.08);
+    }
+
+    body::after {
+      width: 220px;
+      height: 220px;
+      left: -70px;
+      bottom: 10vh;
+      background: rgba(36, 144, 167, 0.08);
+    }
+
+    main {
+      position: relative;
+      z-index: 1;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 18px 14px 28px;
+    }
+
+    .hero,
+    .panel,
+    .metric {
+      background: var(--card);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      border-radius: 28px;
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 8px 0 10px;
+      font-size: 30px;
+      line-height: 1.05;
+    }
+
+    .subline {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .hero-top,
+    .hero-bottom,
+    .chart-head,
+    .filter-row,
+    .legend,
+    .badge-row,
+    .actions,
+    .forecast-grid {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .hero-bottom { margin-top: 18px; }
+
+    .badge-row {
+      justify-content: flex-start;
+    }
+
+    .badge,
+    .filter button {
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      background: var(--chip);
+      color: var(--ink);
+    }
+
+    .badge strong {
+      font-weight: 700;
+      margin-left: 4px;
+    }
+
+    .filter {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter button {
+      cursor: pointer;
+      transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
+    }
+
+    .filter button:hover {
+      transform: translateY(-1px);
+    }
+
+    .filter button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .filter button.danger {
+      background: rgba(180, 70, 53, 0.12);
+      color: var(--danger);
+    }
+
+    .metric-grid,
+    .chart-grid {
+      display: grid;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .metric-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .chart-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .metric {
+      border-radius: 22px;
+      padding: 14px 16px;
+    }
+
+    .metric label,
+    .panel label {
+      display: block;
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .metric .value {
+      margin-top: 8px;
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .metric .hint {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .panel {
+      border-radius: 24px;
+      padding: 16px;
+    }
+
+    .panel h2 {
+      margin: 8px 0 0;
+      font-size: 22px;
+    }
+
+    .chart-wrap {
+      margin-top: 14px;
+      border-radius: 18px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid rgba(28, 43, 45, 0.07);
+      padding: 16px;
+    }
+
+    .forecast-grid {
+      align-items: stretch;
+    }
+
+    .forecast-card {
+      flex: 1 1 180px;
+      min-height: 128px;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.56);
+      border: 1px solid rgba(28, 43, 45, 0.07);
+    }
+
+    .forecast-date {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .forecast-temp {
+      margin-top: 18px;
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .forecast-range {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .detail-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    .detail-item:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .status {
+      margin-top: 12px;
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .legend {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .legend .items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    @media (min-width: 860px) {
+      main { padding: 26px 20px 40px; }
+      .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="hero-top">
+        <div>
+          <p class="eyebrow">Weather Dashboard</p>
+          <h1>桌面时钟天气看板</h1>
+          <p class="subline" id="headline">正在读取设备数据...</p>
+        </div>
+        <div class="badge-row">
+          <span class="badge">设备 IP<strong id="deviceIp">--</strong></span>
+          <span class="badge">Wi-Fi<strong id="wifiName">--</strong></span>
+          <span class="badge">NTP<strong id="ntpState">--</strong></span>
+        </div>
+      </div>
+      <div class="hero-bottom">
+        <div class="filter-row">
+          <div>
+            <p class="eyebrow">Quick Actions</p>
+            <p class="subline" id="deviceTime">等待时间同步...</p>
+          </div>
+          <div class="filter actions">
+            <button type="button" class="primary" id="refreshBtn">刷新数据</button>
+            <button type="button" class="danger" id="resetBtn">重新配网</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="metric-grid">
+      <article class="metric">
+        <label>当前温度</label>
+        <div class="value" id="tempNow">--</div>
+        <div class="hint" id="tempNowHint">等待天气数据</div>
+      </article>
+      <article class="metric">
+        <label>体感温度</label>
+        <div class="value" id="tempFeels">--</div>
+        <div class="hint" id="tempFeelsHint">等待天气数据</div>
+      </article>
+      <article class="metric">
+        <label>当前湿度</label>
+        <div class="value" id="humidity">--</div>
+        <div class="hint" id="humidityHint">等待天气数据</div>
+      </article>
+      <article class="metric">
+        <label>今日温区</label>
+        <div class="value" id="tempRange">--</div>
+        <div class="hint" id="tempRangeHint">最高 / 最低</div>
+      </article>
+    </section>
+
+    <section class="metric-grid">
+      <article class="metric">
+        <label>风速</label>
+        <div class="value" id="windSpeed">--</div>
+        <div class="hint">km/h</div>
+      </article>
+      <article class="metric">
+        <label>能见度</label>
+        <div class="value" id="visibility">--</div>
+        <div class="hint">km</div>
+      </article>
+      <article class="metric">
+        <label>Wi-Fi 信号</label>
+        <div class="value" id="wifiRssi">--</div>
+        <div class="hint" id="wifiHint">网络状态</div>
+      </article>
+      <article class="metric">
+        <label>天气更新时间</label>
+        <div class="value" id="weatherAge">--</div>
+        <div class="hint">距离最近一次成功更新</div>
+      </article>
+    </section>
+
+    <section class="chart-grid">
+      <article class="panel">
+        <div class="chart-head">
+          <div>
+            <label>Forecast</label>
+            <h2>未来 3 天预报</h2>
+          </div>
+          <p class="subline">仅展示当前项目已支持的天气字段</p>
+        </div>
+        <div class="chart-wrap">
+          <div class="forecast-grid">
+            <div class="forecast-card">
+              <div class="forecast-date" id="forecastDate0">--</div>
+              <div class="forecast-temp" id="forecastTemp0">--</div>
+              <div class="forecast-range" id="forecastRange0">--</div>
+            </div>
+            <div class="forecast-card">
+              <div class="forecast-date" id="forecastDate1">--</div>
+              <div class="forecast-temp" id="forecastTemp1">--</div>
+              <div class="forecast-range" id="forecastRange1">--</div>
+            </div>
+            <div class="forecast-card">
+              <div class="forecast-date" id="forecastDate2">--</div>
+              <div class="forecast-temp" id="forecastTemp2">--</div>
+              <div class="forecast-range" id="forecastRange2">--</div>
+            </div>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="items">
+            <span>今日最高 / 最低</span>
+            <span>使用当前项目已有 3 日预报缓存</span>
+          </div>
+          <span id="forecastHint">等待预报数据</span>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="chart-head">
+          <div>
+            <label>Network</label>
+            <h2>网络与设备</h2>
+          </div>
+          <p class="subline">不支持历史曲线和室内传感页面</p>
+        </div>
+        <div class="chart-wrap">
+          <div class="detail-list">
+            <div class="detail-item">
+              <span>固件版本</span>
+              <strong id="fwVersion">--</strong>
+            </div>
+            <div class="detail-item">
+              <span>Wi-Fi 状态</span>
+              <strong id="wifiState">--</strong>
+            </div>
+            <div class="detail-item">
+              <span>已保存 SSID</span>
+              <strong id="savedSsid">--</strong>
+            </div>
+            <div class="detail-item">
+              <span>配网地址</span>
+              <strong id="configUrl">--</strong>
+            </div>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="items">
+            <span>根路径联网后显示看板</span>
+            <span>重置后切回配网页</span>
+          </div>
+          <span id="networkHint">等待网络状态</span>
+        </div>
+        <div class="status" id="statusText"></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const els = {
+      headline: document.getElementById('headline'),
+      deviceIp: document.getElementById('deviceIp'),
+      wifiName: document.getElementById('wifiName'),
+      ntpState: document.getElementById('ntpState'),
+      deviceTime: document.getElementById('deviceTime'),
+      tempNow: document.getElementById('tempNow'),
+      tempNowHint: document.getElementById('tempNowHint'),
+      tempFeels: document.getElementById('tempFeels'),
+      tempFeelsHint: document.getElementById('tempFeelsHint'),
+      humidity: document.getElementById('humidity'),
+      humidityHint: document.getElementById('humidityHint'),
+      tempRange: document.getElementById('tempRange'),
+      tempRangeHint: document.getElementById('tempRangeHint'),
+      windSpeed: document.getElementById('windSpeed'),
+      visibility: document.getElementById('visibility'),
+      wifiRssi: document.getElementById('wifiRssi'),
+      wifiHint: document.getElementById('wifiHint'),
+      weatherAge: document.getElementById('weatherAge'),
+      fwVersion: document.getElementById('fwVersion'),
+      wifiState: document.getElementById('wifiState'),
+      savedSsid: document.getElementById('savedSsid'),
+      configUrl: document.getElementById('configUrl'),
+      statusText: document.getElementById('statusText'),
+      refreshBtn: document.getElementById('refreshBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      forecastDate0: document.getElementById('forecastDate0'),
+      forecastTemp0: document.getElementById('forecastTemp0'),
+      forecastRange0: document.getElementById('forecastRange0'),
+      forecastDate1: document.getElementById('forecastDate1'),
+      forecastTemp1: document.getElementById('forecastTemp1'),
+      forecastRange1: document.getElementById('forecastRange1'),
+      forecastDate2: document.getElementById('forecastDate2'),
+      forecastTemp2: document.getElementById('forecastTemp2'),
+      forecastRange2: document.getElementById('forecastRange2'),
+      forecastHint: document.getElementById('forecastHint'),
+      networkHint: document.getElementById('networkHint')
+    };
+
+    function setStatus(text, isError = false) {
+      els.statusText.textContent = text;
+      els.statusText.style.color = isError ? '#b44635' : '#607072';
+    }
+
+    function formatAge(age) {
+      if (age == null || age < 0) return '未知';
+      if (age < 60) return age + ' 秒前';
+      if (age < 3600) return Math.round(age / 60) + ' 分钟前';
+      return (age / 3600).toFixed(1) + ' 小时前';
+    }
+
+    function wifiStateText(state) {
+      switch (state) {
+        case 'connected': return '已连接';
+        case 'connecting': return '连接中';
+        case 'configuring': return '配网中';
+        case 'failed': return '连接失败';
+        default: return '未连接';
+      }
+    }
+
+    function formatMetric(value, unit = '') {
+      if (value == null || value === '' || Number.isNaN(value)) return '--';
+      return String(value) + unit;
+    }
+
+    function formatForecastDate(dateText) {
+      if (!dateText) return '--';
+      if (dateText.length >= 10) return dateText.slice(5);
+      return dateText;
+    }
+
+    async function postJson(url, body) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {})
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || ('HTTP ' + response.status));
+      }
+
+      return response.json().catch(() => ({}));
+    }
+
+    function renderForecast(forecast) {
+      const items = Array.isArray(forecast) ? forecast : [];
+      let readyCount = 0;
+      for (let i = 0; i < 3; i++) {
+        const item = items[i] || {};
+        if (item.high != null && item.low != null) {
+          readyCount += 1;
+        }
+        els['forecastDate' + i].textContent = formatForecastDate(item.date);
+        els['forecastTemp' + i].textContent = item.high != null && item.low != null
+          ? item.high + '° / ' + item.low + '°'
+          : '--';
+        els['forecastRange' + i].textContent = item.high != null && item.low != null
+          ? '最高 ' + item.high + '° · 最低 ' + item.low + '°'
+          : '等待预报数据';
+      }
+      els.forecastHint.textContent = readyCount > 0
+        ? '已加载 ' + readyCount + ' 天预报'
+        : '等待预报数据';
+    }
+
+    async function loadDashboard() {
+      const response = await fetch('/api/dashboard', { cache: 'no-store' });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+
+      const payload = await response.json();
+      const wifi = payload.wifi || {};
+      const weather = payload.weather || {};
+
+      els.deviceIp.textContent = wifi.ip || '--';
+      els.wifiName.textContent = wifi.saved_ssid || '--';
+      els.ntpState.textContent = payload.ntp_synced ? '已同步' : '同步中';
+      els.deviceTime.textContent = payload.time && payload.time !== '--'
+        ? '设备时间：' + payload.time
+        : '设备时间尚未同步，天气 HTTPS 更新会等待 NTP。';
+      els.fwVersion.textContent = payload.fw_version || '--';
+      els.wifiState.textContent = wifiStateText(wifi.state);
+      els.savedSsid.textContent = wifi.saved_ssid || '未保存';
+      els.configUrl.textContent = wifi.config_url || '--';
+      els.wifiRssi.textContent = wifi.connected ? formatMetric(wifi.rssi, ' dBm') : '--';
+      els.wifiHint.textContent = wifi.connected ? '当前路由器信号强度' : '设备当前不在联网状态';
+      els.networkHint.textContent = wifi.connected
+        ? '当前通过 ' + (wifi.saved_ssid || 'Wi-Fi') + ' 联网'
+        : '设备当前未连到路由器';
+      els.weatherAge.textContent = weather.available ? formatAge(weather.age_s) : '--';
+
+      if (weather.available) {
+        els.tempNow.textContent = formatMetric(weather.temp_now, '°');
+        els.tempNowHint.textContent = '当前气温';
+        els.tempFeels.textContent = formatMetric(weather.temp_feels, '°');
+        els.tempFeelsHint.textContent = '体感温度';
+        els.humidity.textContent = formatMetric(weather.humidity, '%');
+        els.humidityHint.textContent = '相对湿度';
+        els.tempRange.textContent = formatMetric(weather.temp_high, '°') + ' / ' + formatMetric(weather.temp_low, '°');
+        els.tempRangeHint.textContent = '今日最高 / 最低';
+        els.windSpeed.textContent = formatMetric(weather.wind_speed);
+        els.visibility.textContent = formatMetric(weather.visibility);
+        els.headline.textContent = '当前天气 ' + formatMetric(weather.temp_now, '°') + '，体感 ' +
+          formatMetric(weather.temp_feels, '°') + '，湿度 ' + formatMetric(weather.humidity, '%') + '。';
+      } else {
+        els.tempNow.textContent = '--';
+        els.tempNowHint.textContent = '等待天气数据';
+        els.tempFeels.textContent = '--';
+        els.tempFeelsHint.textContent = '等待天气数据';
+        els.humidity.textContent = '--';
+        els.humidityHint.textContent = '等待天气数据';
+        els.tempRange.textContent = '--';
+        els.tempRangeHint.textContent = '最高 / 最低';
+        els.windSpeed.textContent = '--';
+        els.visibility.textContent = '--';
+        els.headline.textContent = wifi.connected
+          ? '设备已联网，正在等待天气数据更新。'
+          : '设备当前未联网，如需重新配置请切换到配网模式。';
+      }
+
+      renderForecast(weather.forecast);
+      setStatus(wifi.connected ? '页面会自动刷新当前天气与网络状态。' : '设备未连接到路由器。', !wifi.connected);
+    }
+
+    els.refreshBtn.addEventListener('click', async () => {
+      try {
+        await loadDashboard();
+      } catch (error) {
+        setStatus('刷新失败：' + error.message, true);
+      }
+    });
+
+    els.resetBtn.addEventListener('click', async () => {
+      try {
+        setStatus('正在切换到重新配网模式...');
+        await postJson('/api/wifi/reset', {});
+        setStatus('已触发重新配网。设备会切换到 DeskClock 热点，并在 http://192.168.4.1/ 提供配网页。');
+      } catch (error) {
+        setStatus('重新配网失败：' + error.message, true);
+      }
+    });
+
+    loadDashboard().catch((error) => setStatus('读取数据失败：' + error.message, true));
+    setInterval(() => {
+      loadDashboard().catch(() => {});
+    }, 10000);
+  </script>
+</body>
+</html>

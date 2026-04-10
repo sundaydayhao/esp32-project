@@ -52,6 +52,7 @@ static esp_err_t save_credentials(const char *ssid, const char *pass);
 static esp_err_t clear_credentials(void);
 static void set_state(wifi_state_t state);
 static bool has_text(const char *value);
+static void refresh_ip_from_netif(void);
 
 static const char *wifi_reason_to_name(uint8_t reason)
 {
@@ -256,6 +257,19 @@ static void set_state(wifi_state_t state)
 static bool has_text(const char *value)
 {
     return value && value[0] != '\0';
+}
+
+static void refresh_ip_from_netif(void)
+{
+    esp_netif_ip_info_t ip_info = {0};
+
+    if (!s_sta_netif) {
+        return;
+    }
+
+    if (esp_netif_get_ip_info(s_sta_netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
+        snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&ip_info.ip));
+    }
 }
 
 static void update_ap_ssid(void)
@@ -647,12 +661,15 @@ esp_err_t wifi_manager_init(void)
 
 wifi_state_t wifi_manager_get_state(void)
 {
+    if (s_state == WIFI_STATE_CONNECTED) {
+        refresh_ip_from_netif();
+    }
     return s_state;
 }
 
 bool wifi_manager_is_connected(void)
 {
-    return s_state == WIFI_STATE_CONNECTED;
+    return wifi_manager_get_state() == WIFI_STATE_CONNECTED;
 }
 
 bool wifi_manager_is_config_mode(void)
@@ -677,6 +694,10 @@ esp_err_t wifi_manager_wait_connected(uint32_t timeout_ms)
 
 void wifi_manager_get_ip(char *buf, size_t len)
 {
+    if (strcmp(s_ip, "0.0.0.0") == 0) {
+        refresh_ip_from_netif();
+    }
+
     if (buf && len > 0) {
         strlcpy(buf, s_ip, len);
     }
