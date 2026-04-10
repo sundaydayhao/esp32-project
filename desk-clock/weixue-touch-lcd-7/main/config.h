@@ -86,6 +86,7 @@
 #define NTP_SERVER_3        "time.windows.com"
 #define NTP_TIMEZONE        "CST-8"
 #define NTP_SYNC_INTERVAL_S (3600)
+#define NTP_RETRY_INTERVAL_S (30)
 
 /* ================================================================
  * Weather API

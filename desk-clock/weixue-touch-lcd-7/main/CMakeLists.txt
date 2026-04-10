@@ -36,5 +36,6 @@ idf_component_register(
         mbedtls
     EMBED_TXTFILES
         "certs/isrg_root_x1.pem"
+        "web/dashboard.html"
         "web/provision.html"
 )
