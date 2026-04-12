@@ -6,8 +6,10 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <strings.h>
 
 #include "config.h"
 #include "driver/gpio.h"
@@ -24,6 +26,7 @@
 #include "sdmmc_cmd.h"
 
 #define SD_MOUNT_POINT                  "/sdcard"
+#define AUDIO_MUSIC_DIR                 SD_MOUNT_POINT "/Music"
 #define AUDIO_TRACK_DEFAULT_DURATION_SEC 180U
 #define AUDIO_I2S_WRITE_FRAMES          256U
 #define AUDIO_I2S_CHANNEL_COUNT         2U
@@ -52,6 +55,13 @@ static SemaphoreHandle_t s_status_mutex = NULL;
 static TaskHandle_t s_audio_task = NULL;
 static bool s_task_running = false;
 static size_t s_subsecond_frames = 0;
+
+static int playlist_entry_cmp(const void *a, const void *b)
+{
+    const char *lhs = (const char *)a;
+    const char *rhs = (const char *)b;
+    return strcasecmp(lhs, rhs);
+}
 
 static bool is_audio_file(const char *filename)
 {
@@ -84,14 +94,14 @@ static void extract_title_from_filename(const char *filename, char *title, size_
 
 static bool build_audio_path(const char *filename, char *path, size_t path_size)
 {
-    const size_t mount_len = sizeof(SD_MOUNT_POINT) - 1;
+    const size_t mount_len = sizeof(AUDIO_MUSIC_DIR) - 1;
     const size_t name_len = strlen(filename);
 
     if (mount_len + 1 + name_len >= path_size) {
         return false;
     }
 
-    memcpy(path, SD_MOUNT_POINT, mount_len);
+    memcpy(path, AUDIO_MUSIC_DIR, mount_len);
     path[mount_len] = '/';
     memcpy(path + mount_len + 1, filename, name_len + 1);
     return true;
@@ -592,9 +602,9 @@ esp_err_t audio_player_scan_files(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    DIR *dir = opendir(SD_MOUNT_POINT);
+    DIR *dir = opendir(AUDIO_MUSIC_DIR);
     if (!dir) {
-        ESP_LOGE(TAG, "Failed to open directory");
+        ESP_LOGW(TAG, "Failed to open music directory: %s", AUDIO_MUSIC_DIR);
         return ESP_FAIL;
     }
 
@@ -602,7 +612,7 @@ esp_err_t audio_player_scan_files(void)
     struct dirent *entry;
 
     while ((entry = readdir(dir)) != NULL && s_playlist.count < AUDIO_MAX_PLAYLIST_SIZE) {
-        if (entry->d_type == DT_REG && is_audio_file(entry->d_name)) {
+        if ((entry->d_type == DT_REG || entry->d_type == DT_UNKNOWN) && is_audio_file(entry->d_name)) {
             if (!build_audio_path(entry->d_name,
                                   s_playlist.files[s_playlist.count],
                                   AUDIO_MAX_FILENAME_LEN)) {
@@ -615,6 +625,10 @@ esp_err_t audio_player_scan_files(void)
     }
 
     closedir(dir);
+    qsort(s_playlist.files,
+          (size_t)s_playlist.count,
+          sizeof(s_playlist.files[0]),
+          playlist_entry_cmp);
 
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
         s_status.total_tracks = s_playlist.count;
@@ -626,7 +640,7 @@ esp_err_t audio_player_scan_files(void)
         xSemaphoreGive(s_status_mutex);
     }
 
-    ESP_LOGI(TAG, "Scanned %d audio files", s_playlist.count);
+    ESP_LOGI(TAG, "Scanned %d audio files in %s", s_playlist.count, AUDIO_MUSIC_DIR);
     return ESP_OK;
 }
 
@@ -652,6 +666,32 @@ esp_err_t audio_player_play(void)
         } else {
             ESP_LOGI(TAG, "Playing I2S test tone on MAX98357A output");
         }
+        return ESP_OK;
+    }
+
+    return ESP_FAIL;
+}
+
+esp_err_t audio_player_play_index(int index)
+{
+    char title[sizeof(s_status.current_info.title)] = {0};
+
+    if (!s_status_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
+        if (index < 0 || index >= s_playlist.count) {
+            xSemaphoreGive(s_status_mutex);
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        load_playlist_track_locked(index);
+        s_status.state = AUDIO_STATE_PLAYING;
+        strlcpy(title, s_status.current_info.title, sizeof(title));
+        xSemaphoreGive(s_status_mutex);
+
+        ESP_LOGI(TAG, "Selected track %d: %s", index, title);
         return ESP_OK;
     }
 
@@ -759,6 +799,46 @@ esp_err_t audio_player_get_status(audio_player_status_t *status)
 
     if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
         memcpy(status, &s_status, sizeof(audio_player_status_t));
+        xSemaphoreGive(s_status_mutex);
+        return ESP_OK;
+    }
+
+    return ESP_FAIL;
+}
+
+int audio_player_get_track_count(void)
+{
+    if (!s_status_mutex) {
+        return s_playlist.count;
+    }
+
+    int count = 0;
+    if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
+        count = s_status.total_tracks;
+        xSemaphoreGive(s_status_mutex);
+    }
+    return count;
+}
+
+esp_err_t audio_player_get_track_info(int index, audio_track_info_t *info)
+{
+    if (!info) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_status_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (xSemaphoreTake(s_status_mutex, portMAX_DELAY) == pdTRUE) {
+        if (index < 0 || index >= s_playlist.count) {
+            xSemaphoreGive(s_status_mutex);
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        memset(info, 0, sizeof(*info));
+        strlcpy(info->filename, s_playlist.files[index], sizeof(info->filename));
+        extract_title_from_filename(info->filename, info->title, sizeof(info->title));
+        info->duration_sec = AUDIO_TRACK_DEFAULT_DURATION_SEC;
         xSemaphoreGive(s_status_mutex);
         return ESP_OK;
     }

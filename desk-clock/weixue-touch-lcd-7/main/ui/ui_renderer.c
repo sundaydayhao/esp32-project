@@ -22,20 +22,28 @@
 #include "net/weather_client.h"
 #include "net/wifi_manager.h"
 #include "power/battery_monitor.h"
+#include "storage/media_library.h"
 #include "touch_gt911.h"
 #include "ui/ui_font_manager.h"
 #include "ui/ui_music_player.h"
 
-#define LVGL_TICK_PERIOD_MS 5
-#define UI_MIN_DELAY_MS 10
-#define UI_MAX_DELAY_MS 100
-#define UI_STATUS_UPDATE_MS 5000
-#define UI_CLOCK_UPDATE_MS 1000
-#define UI_MUSIC_UPDATE_MS 1000
-#define UI_EVENT_QUEUE_LEN 16
-#define UI_FLUSH_TIMEOUT_MS 1000
-#define UI_PI 3.14159265358979323846f
-#define UI_DEGREE_SYMBOL "\xC2\xB0"
+#define LVGL_TICK_PERIOD_MS      5
+#define UI_MIN_DELAY_MS          10
+#define UI_MAX_DELAY_MS          100
+#define UI_STATUS_UPDATE_MS      5000
+#define UI_CLOCK_UPDATE_MS       1000
+#define UI_MUSIC_UPDATE_MS       1000
+#define UI_PHOTO_ROTATE_MS       5000
+#define UI_EVENT_QUEUE_LEN       16
+#define UI_FLUSH_TIMEOUT_MS      1000
+#define UI_SWIPE_MIN_X_PX        90
+#define UI_SWIPE_MAX_Y_PX        80
+#define UI_TAP_MAX_MOVE_PX       24
+#define UI_DEGREE_SYMBOL         "\xC2\xB0"
+#define UI_PAGE_COUNT            4
+#define UI_CALENDAR_COLS         7
+#define UI_CALENDAR_ROWS         6
+#define UI_CALENDAR_CELL_COUNT   (UI_CALENDAR_COLS * UI_CALENDAR_ROWS)
 
 typedef enum {
     WEATHER_ICON_SUNNY = 0,
@@ -46,52 +54,12 @@ typedef enum {
     WEATHER_ICON_HAZE,
 } weather_icon_mode_t;
 
-typedef struct {
-    lv_obj_t *status_label;
-    lv_obj_t *network_icon_label;
-    lv_obj_t *network_value_label;
-    lv_obj_t *battery_icon_label;
-    lv_obj_t *battery_label;
-    lv_obj_t *time_label;
-    lv_obj_t *date_label;
-    lv_obj_t *clock_hour_hand;
-    lv_obj_t *clock_minute_hand;
-    lv_obj_t *clock_second_hand;
-    lv_obj_t *weather_title;
-    lv_obj_t *weather_temp;
-    lv_obj_t *weather_cond;
-    lv_obj_t *detail_humidity;
-    lv_obj_t *detail_feels;
-    lv_obj_t *detail_wind;
-    lv_obj_t *detail_vis;
-    lv_obj_t *weather_sun;
-    lv_obj_t *weather_rays[4];
-    lv_obj_t *weather_cloud[4];
-    lv_obj_t *weather_rain[3];
-    lv_obj_t *weather_snow[3];
-    lv_obj_t *weather_haze[3];
-    lv_obj_t *forecast_date[3];
-    lv_obj_t *forecast_cond[3];
-    lv_obj_t *forecast_temp[3];
-
-    char status_text[96];
-    char network_icon_text[16];
-    char network_value_text[12];
-    char battery_icon_text[16];
-    char battery_text[24];
-    char time_text[16];
-    char date_text[40];
-    char weather_title_text[48];
-    char weather_temp_text[16];
-    char weather_cond_text[32];
-    char detail_humidity_text[24];
-    char detail_feels_text[24];
-    char detail_wind_text[24];
-    char detail_vis_text[24];
-    char forecast_date_text[3][16];
-    char forecast_cond_text[3][24];
-    char forecast_temp_text[3][16];
-} ui_state_t;
+typedef enum {
+    UI_PAGE_HOME = 0,
+    UI_PAGE_PHOTO,
+    UI_PAGE_MUSIC,
+    UI_PAGE_VIDEO,
+} ui_page_t;
 
 typedef enum {
     UI_MSG_WIFI = 1,
@@ -110,6 +78,116 @@ typedef struct {
     } data;
 } ui_msg_t;
 
+typedef struct {
+    lv_obj_t *status_label;
+    lv_obj_t *network_icon_label;
+    lv_obj_t *network_value_label;
+    lv_obj_t *battery_icon_label;
+    lv_obj_t *battery_label;
+
+    lv_obj_t *tileview;
+    lv_obj_t *pages[UI_PAGE_COUNT];
+    lv_obj_t *page_name_label;
+    lv_obj_t *page_dots[UI_PAGE_COUNT];
+    int active_page;
+
+    lv_obj_t *calendar_title_label;
+    lv_obj_t *calendar_weekday_labels[UI_CALENDAR_COLS];
+    lv_obj_t *calendar_day_cells[UI_CALENDAR_CELL_COUNT];
+    lv_obj_t *calendar_day_labels[UI_CALENDAR_CELL_COUNT];
+    lv_obj_t *time_label;
+    lv_obj_t *date_label;
+
+    lv_obj_t *weather_title;
+    lv_obj_t *weather_temp;
+    lv_obj_t *weather_cond;
+    lv_obj_t *detail_humidity;
+    lv_obj_t *detail_feels;
+    lv_obj_t *detail_wind;
+    lv_obj_t *detail_vis;
+    lv_obj_t *forecast_date[3];
+    lv_obj_t *forecast_cond[3];
+    lv_obj_t *forecast_temp[3];
+    lv_obj_t *weather_sun;
+    lv_obj_t *weather_rays[4];
+    lv_obj_t *weather_cloud[4];
+    lv_obj_t *weather_rain[3];
+    lv_obj_t *weather_snow[3];
+    lv_obj_t *weather_haze[3];
+
+    lv_obj_t *photo_image;
+    lv_obj_t *photo_placeholder_icon;
+    lv_obj_t *photo_name_label;
+    lv_obj_t *photo_meta_label;
+    lv_obj_t *photo_status_label;
+
+    lv_obj_t *music_list_wrap;
+    lv_obj_t *music_empty_label;
+    lv_obj_t *music_item_btn[AUDIO_MAX_PLAYLIST_SIZE];
+    lv_obj_t *music_item_index_label[AUDIO_MAX_PLAYLIST_SIZE];
+    lv_obj_t *music_item_title_label[AUDIO_MAX_PLAYLIST_SIZE];
+    int music_item_count;
+
+    lv_obj_t *video_preview_image;
+    lv_obj_t *video_preview_placeholder_icon;
+    lv_obj_t *video_name_label;
+    lv_obj_t *video_status_label;
+    lv_obj_t *video_list_wrap;
+    lv_obj_t *video_empty_label;
+    lv_obj_t *video_card_btn[MEDIA_LIBRARY_MAX_ITEMS];
+    lv_obj_t *video_card_thumb_frame[MEDIA_LIBRARY_MAX_ITEMS];
+    lv_obj_t *video_card_image[MEDIA_LIBRARY_MAX_ITEMS];
+    lv_obj_t *video_card_placeholder[MEDIA_LIBRARY_MAX_ITEMS];
+    lv_obj_t *video_card_title[MEDIA_LIBRARY_MAX_ITEMS];
+    int video_card_count;
+
+    int current_photo_index;
+    int current_video_index;
+    int rendered_photo_index;
+    int rendered_photo_count;
+    int rendered_video_index;
+    int rendered_video_count;
+    int rendered_music_track;
+    int rendered_video_selection_index;
+    int rendered_video_selection_count;
+    int rendered_calendar_year;
+    int rendered_calendar_month;
+    int rendered_calendar_day;
+    bool calendar_rendered_valid;
+    bool status_colors_valid;
+    lv_color_t rendered_network_color;
+    lv_color_t rendered_battery_color;
+    bool sd_media_loaded;
+
+    char status_text[96];
+    char network_icon_text[16];
+    char network_value_text[12];
+    char battery_icon_text[16];
+    char battery_text[24];
+    char page_title_text[24];
+    char calendar_title_text[32];
+    char time_text[16];
+    char date_text[40];
+    char weather_title_text[48];
+    char weather_temp_text[16];
+    char weather_cond_text[32];
+    char detail_humidity_text[24];
+    char detail_feels_text[24];
+    char detail_wind_text[24];
+    char detail_vis_text[24];
+    char forecast_date_text[3][16];
+    char forecast_cond_text[3][24];
+    char forecast_temp_text[3][16];
+    char photo_name_text[96];
+    char photo_meta_text[48];
+    char photo_status_text[96];
+    char video_name_text[96];
+    char video_status_text[96];
+} ui_state_t;
+
+static const char *s_page_names[UI_PAGE_COUNT] = {"月历", "照片", "音乐", "视频"};
+static const char *s_calendar_headers[UI_CALENDAR_COLS] = {"一", "二", "三", "四", "五", "六", "日"};
+
 static lv_display_t *s_display = NULL;
 static esp_timer_handle_t s_lvgl_tick_timer = NULL;
 static QueueHandle_t s_ui_event_queue = NULL;
@@ -123,6 +201,19 @@ static bool s_time_ready = false;
 static bool s_ui_ready = false;
 static lv_indev_t *s_touch_indev = NULL;
 static lv_point_t s_last_touch_point = {0, 0};
+static lv_point_t s_touch_start_point = {0, 0};
+static lv_point_t s_touch_last_move_point = {0, 0};
+static bool s_touch_pressed = false;
+static bool s_touch_swipe_tracking = false;
+static int s_pending_page_delta = 0;
+
+static void update_photo_view(void);
+static void update_video_preview(void);
+static void update_video_card_selection(void);
+static void update_page_indicator(void);
+static bool point_in_obj(lv_obj_t *obj, const lv_point_t *point);
+static void switch_to_page(int page, lv_anim_enable_t anim_en);
+static void process_pending_swipe(void);
 
 static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t storage_size, const char *text)
 {
@@ -135,7 +226,7 @@ static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t sto
     }
 
     strlcpy(storage, text, storage_size);
-    lv_label_set_text_static(label, storage);
+    lv_label_set_text(label, storage);
     return true;
 }
 
@@ -144,11 +235,9 @@ static int wifi_signal_percent(int8_t rssi)
     if (rssi <= -100) {
         return 0;
     }
-
     if (rssi >= -50) {
         return 100;
     }
-
     return (int)((rssi + 100) * 2);
 }
 
@@ -240,6 +329,18 @@ static const char *weekday_cn(int wday)
     return weekdays[wday];
 }
 
+static int days_in_month(int year, int month)
+{
+    static const int days_per_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    int days = days_per_month[month - 1];
+    bool leap_year = ((year % 4 == 0) && (year % 100 != 0)) || (year % 400 == 0);
+
+    if (month == 2 && leap_year) {
+        days = 29;
+    }
+    return days;
+}
+
 static const char *weather_condition_text(const char *icon_code)
 {
     int code = icon_code ? atoi(icon_code) : 0;
@@ -251,8 +352,6 @@ static const char *weather_condition_text(const char *icon_code)
     if (code >= 302 && code <= 304) return "雷雨";
     if (code >= 300 && code <= 399) return "降雨";
     if (code >= 400 && code <= 499) return "降雪";
-    if (code == 507 || code == 508) return "沙尘";
-    if (code == 502 || code == 511 || code == 512 || code == 513) return "雾霾";
     if (code >= 500 && code <= 515) return "雾霾";
     return "天气";
 }
@@ -414,6 +513,18 @@ static void lvgl_tick_cb(void *arg)
     lv_tick_inc(LVGL_TICK_PERIOD_MS);
 }
 
+static bool point_in_obj(lv_obj_t *obj, const lv_point_t *point)
+{
+    if (!obj || !point) {
+        return false;
+    }
+
+    lv_area_t area;
+    lv_obj_get_coords(obj, &area);
+    return point->x >= area.x1 && point->x <= area.x2 &&
+           point->y >= area.y1 && point->y <= area.y2;
+}
+
 static void lvgl_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     uint16_t x = 0;
@@ -423,6 +534,17 @@ static void lvgl_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     LV_UNUSED(indev);
 
     if (touch_gt911_read(&x, &y, &pressed) == ESP_OK && pressed) {
+        if (s_ui.tileview) {
+            lv_coord_t tile_y = lv_obj_get_y(s_ui.tileview);
+            if (tile_y > 0 && y < (uint16_t)lv_obj_get_height(s_ui.tileview)) {
+                uint32_t adjusted_y = (uint32_t)y + (uint32_t)tile_y;
+                if (adjusted_y >= LCD_V_RES) {
+                    adjusted_y = LCD_V_RES - 1;
+                }
+                y = (uint16_t)adjusted_y;
+            }
+        }
+
         s_last_touch_point.x = x;
         s_last_touch_point.y = y;
         data->point = s_last_touch_point;
@@ -430,6 +552,38 @@ static void lvgl_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     } else {
         data->point = s_last_touch_point;
         data->state = LV_INDEV_STATE_RELEASED;
+    }
+
+    if (pressed) {
+        if (!s_touch_pressed) {
+            s_touch_pressed = true;
+            s_touch_start_point = s_last_touch_point;
+            s_touch_last_move_point = s_last_touch_point;
+            s_touch_swipe_tracking = point_in_obj(s_ui.tileview, &s_last_touch_point);
+        } else if (s_touch_swipe_tracking) {
+            s_touch_last_move_point = s_last_touch_point;
+        }
+    } else if (s_touch_pressed) {
+        int dx = s_touch_last_move_point.x - s_touch_start_point.x;
+        int dy = s_touch_last_move_point.y - s_touch_start_point.y;
+        int abs_dx = dx >= 0 ? dx : -dx;
+        int abs_dy = dy >= 0 ? dy : -dy;
+
+        if (s_touch_swipe_tracking && s_pending_page_delta == 0) {
+            if (abs_dx >= UI_SWIPE_MIN_X_PX && abs_dx > abs_dy && abs_dy <= UI_SWIPE_MAX_Y_PX) {
+                s_pending_page_delta = dx < 0 ? 1 : -1;
+            }
+        }
+
+        if (s_pending_page_delta == 0 &&
+            abs_dx <= UI_TAP_MAX_MOVE_PX &&
+            abs_dy <= UI_TAP_MAX_MOVE_PX &&
+            s_ui.active_page == UI_PAGE_MUSIC) {
+            (void)ui_music_player_handle_touch_release(&s_last_touch_point);
+        }
+
+        s_touch_pressed = false;
+        s_touch_swipe_tracking = false;
     }
 }
 
@@ -450,6 +604,7 @@ static void ui_init_touch_input(void)
 
 static void style_panel(lv_obj_t *obj)
 {
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_radius(obj, 24, 0);
     lv_obj_set_style_border_width(obj, 1, 0);
     lv_obj_set_style_border_color(obj, lv_color_hex(0x20384E), 0);
@@ -458,8 +613,18 @@ static void style_panel(lv_obj_t *obj)
     lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
     lv_obj_set_style_shadow_width(obj, 0, 0);
-    lv_obj_set_style_shadow_opa(obj, LV_OPA_TRANSP, 0);
     lv_obj_set_style_pad_all(obj, 18, 0);
+}
+
+static void style_chip(lv_obj_t *obj, lv_color_t bg_color)
+{
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(obj, 16, 0);
+    lv_obj_set_style_border_width(obj, 1, 0);
+    lv_obj_set_style_border_color(obj, lv_color_hex(0x25435C), 0);
+    lv_obj_set_style_bg_color(obj, bg_color, 0);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(obj, 0, 0);
 }
 
 static void style_small_cjk_label(lv_obj_t *obj, lv_color_t color)
@@ -468,14 +633,26 @@ static void style_small_cjk_label(lv_obj_t *obj, lv_color_t color)
     lv_obj_set_style_text_color(obj, color, 0);
 }
 
-static void style_chip(lv_obj_t *obj, lv_color_t bg_color)
+static void style_section_title(lv_obj_t *obj)
 {
+    style_small_cjk_label(obj, lv_color_hex(0x68C1FF));
+}
+
+static void style_body_label(lv_obj_t *obj, lv_color_t color)
+{
+    style_small_cjk_label(obj, color);
+}
+
+static void style_thumb_frame(lv_obj_t *obj)
+{
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_radius(obj, 16, 0);
     lv_obj_set_style_border_width(obj, 1, 0);
-    lv_obj_set_style_border_color(obj, lv_color_hex(0x25435C), 0);
-    lv_obj_set_style_bg_color(obj, bg_color, 0);
+    lv_obj_set_style_border_color(obj, lv_color_hex(0x304E68), 0);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0x0C1724), 0);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(obj, 0, 0);
+    lv_obj_set_style_clip_corner(obj, true, 0);
 }
 
 static void set_obj_hidden(lv_obj_t *obj, bool hidden)
@@ -539,27 +716,6 @@ static void set_weather_icon_mode(weather_icon_mode_t mode)
     }
 }
 
-static void update_clock_visual(const struct tm *now)
-{
-    if (!now) {
-        return;
-    }
-
-    int hour_angle = ((now->tm_hour % 12) * 300) + (now->tm_min * 5);
-    int minute_angle = (now->tm_min * 60) + now->tm_sec;
-    int second_angle = now->tm_sec * 60;
-
-    if (s_ui.clock_hour_hand) {
-        lv_obj_set_style_transform_rotation(s_ui.clock_hour_hand, hour_angle, 0);
-    }
-    if (s_ui.clock_minute_hand) {
-        lv_obj_set_style_transform_rotation(s_ui.clock_minute_hand, minute_angle, 0);
-    }
-    if (s_ui.clock_second_hand) {
-        lv_obj_set_style_transform_rotation(s_ui.clock_second_hand, second_angle, 0);
-    }
-}
-
 static void format_forecast_date(const char *date_text, char *out, size_t out_size)
 {
     int year = 0;
@@ -586,127 +742,25 @@ static void format_forecast_date(const char *date_text, char *out, size_t out_si
     strlcpy(out, weekday_cn(tm_date.tm_wday), out_size);
 }
 
-static void create_forecast_card(lv_obj_t *parent, int index, int x)
-{
-    lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_size(card, 60, 92);
-    lv_obj_set_pos(card, x, 248);
-    style_chip(card, lv_color_hex(0x15273A));
-
-    s_ui.forecast_date[index] = lv_label_create(card);
-    lv_obj_set_size(s_ui.forecast_date[index], LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.forecast_date[index], 0, 10);
-    style_small_cjk_label(s_ui.forecast_date[index], lv_color_hex(0x91B7DC));
-    lv_obj_set_style_text_align(s_ui.forecast_date[index], LV_TEXT_ALIGN_CENTER, 0);
-
-    s_ui.forecast_cond[index] = lv_label_create(card);
-    lv_obj_set_size(s_ui.forecast_cond[index], LV_PCT(100), 20);
-    lv_obj_set_pos(s_ui.forecast_cond[index], 0, 36);
-    style_small_cjk_label(s_ui.forecast_cond[index], lv_color_hex(0xF4F7FB));
-    lv_obj_set_style_text_align(s_ui.forecast_cond[index], LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(s_ui.forecast_cond[index], LV_LABEL_LONG_CLIP);
-
-    s_ui.forecast_temp[index] = lv_label_create(card);
-    lv_obj_set_size(s_ui.forecast_temp[index], LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_pos(s_ui.forecast_temp[index], 0, 62);
-    lv_obj_set_style_text_font(s_ui.forecast_temp[index], &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_ui.forecast_temp[index], lv_color_hex(0x7CD6FF), 0);
-    lv_obj_set_style_text_align(s_ui.forecast_temp[index], LV_TEXT_ALIGN_CENTER, 0);
-}
-
 static void create_detail_card(lv_obj_t *parent, lv_obj_t **label, int x, int y)
 {
     lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_size(card, 96, 32);
+    lv_obj_set_size(card, 124, 34);
     lv_obj_set_pos(card, x, y);
     style_chip(card, lv_color_hex(0x111F2D));
 
     *label = lv_label_create(card);
     lv_obj_set_size(*label, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_align(*label, LV_ALIGN_CENTER, 0, 0);
-    style_small_cjk_label(*label, lv_color_hex(0xD5DFEB));
+    style_body_label(*label, lv_color_hex(0xD5DFEB));
     lv_obj_set_style_text_align(*label, LV_TEXT_ALIGN_CENTER, 0);
-}
-
-static void create_clock_visual(lv_obj_t *parent)
-{
-    const int face_size = 170;
-    const int center = face_size / 2;
-    const int orbit = 66;
-
-    lv_obj_t *face = lv_obj_create(parent);
-    lv_obj_set_size(face, face_size, face_size);
-    lv_obj_set_pos(face, 38, 30);
-    lv_obj_set_style_radius(face, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(face, 2, 0);
-    lv_obj_set_style_border_color(face, lv_color_hex(0x325A76), 0);
-    lv_obj_set_style_bg_color(face, lv_color_hex(0x091320), 0);
-    lv_obj_set_style_bg_grad_color(face, lv_color_hex(0x122537), 0);
-    lv_obj_set_style_bg_grad_dir(face, LV_GRAD_DIR_VER, 0);
-    lv_obj_set_style_shadow_width(face, 0, 0);
-    lv_obj_set_style_shadow_opa(face, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_pad_all(face, 0, 0);
-
-    for (int i = 0; i < 12; i++) {
-        float angle = ((float)i * 30.0f) * (UI_PI / 180.0f);
-        int dot_size = (i % 3 == 0) ? 8 : 4;
-        int x = center + (int)(sinf(angle) * (float)orbit) - (dot_size / 2);
-        int y = center - (int)(cosf(angle) * (float)orbit) - (dot_size / 2);
-
-        lv_obj_t *dot = lv_obj_create(face);
-        lv_obj_set_size(dot, dot_size, dot_size);
-        lv_obj_set_pos(dot, x, y);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(dot, 0, 0);
-        lv_obj_set_style_bg_color(dot, i % 3 == 0 ? lv_color_hex(0x76D0FF) : lv_color_hex(0x40657E), 0);
-        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-        lv_obj_set_style_pad_all(dot, 0, 0);
-    }
-
-    s_ui.clock_hour_hand = lv_obj_create(face);
-    lv_obj_set_size(s_ui.clock_hour_hand, 6, 40);
-    lv_obj_set_pos(s_ui.clock_hour_hand, center - 3, center - 40);
-    lv_obj_set_style_radius(s_ui.clock_hour_hand, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(s_ui.clock_hour_hand, 0, 0);
-    lv_obj_set_style_bg_color(s_ui.clock_hour_hand, lv_color_hex(0xF7F9FD), 0);
-    lv_obj_set_style_bg_opa(s_ui.clock_hour_hand, LV_OPA_COVER, 0);
-    lv_obj_set_style_transform_pivot_x(s_ui.clock_hour_hand, 3, 0);
-    lv_obj_set_style_transform_pivot_y(s_ui.clock_hour_hand, 40, 0);
-
-    s_ui.clock_minute_hand = lv_obj_create(face);
-    lv_obj_set_size(s_ui.clock_minute_hand, 4, 58);
-    lv_obj_set_pos(s_ui.clock_minute_hand, center - 2, center - 58);
-    lv_obj_set_style_radius(s_ui.clock_minute_hand, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(s_ui.clock_minute_hand, 0, 0);
-    lv_obj_set_style_bg_color(s_ui.clock_minute_hand, lv_color_hex(0x7CD6FF), 0);
-    lv_obj_set_style_bg_opa(s_ui.clock_minute_hand, LV_OPA_COVER, 0);
-    lv_obj_set_style_transform_pivot_x(s_ui.clock_minute_hand, 2, 0);
-    lv_obj_set_style_transform_pivot_y(s_ui.clock_minute_hand, 58, 0);
-
-    s_ui.clock_second_hand = lv_obj_create(face);
-    lv_obj_set_size(s_ui.clock_second_hand, 2, 66);
-    lv_obj_set_pos(s_ui.clock_second_hand, center - 1, center - 66);
-    lv_obj_set_style_radius(s_ui.clock_second_hand, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(s_ui.clock_second_hand, 0, 0);
-    lv_obj_set_style_bg_color(s_ui.clock_second_hand, lv_color_hex(0xFFB057), 0);
-    lv_obj_set_style_bg_opa(s_ui.clock_second_hand, LV_OPA_COVER, 0);
-    lv_obj_set_style_transform_pivot_x(s_ui.clock_second_hand, 1, 0);
-    lv_obj_set_style_transform_pivot_y(s_ui.clock_second_hand, 66, 0);
-
-    lv_obj_t *center_dot = lv_obj_create(face);
-    lv_obj_set_size(center_dot, 14, 14);
-    lv_obj_set_pos(center_dot, center - 7, center - 7);
-    lv_obj_set_style_radius(center_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(center_dot, 0, 0);
-    lv_obj_set_style_bg_color(center_dot, lv_color_hex(0xFFB057), 0);
-    lv_obj_set_style_bg_opa(center_dot, LV_OPA_COVER, 0);
 }
 
 static void create_weather_visual(lv_obj_t *parent)
 {
     lv_obj_t *wrap = lv_obj_create(parent);
     lv_obj_set_size(wrap, 92, 92);
-    lv_obj_set_pos(wrap, 112, 10);
+    lv_obj_set_pos(wrap, 182, 6);
     lv_obj_set_style_bg_opa(wrap, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(wrap, 0, 0);
     lv_obj_set_style_pad_all(wrap, 0, 0);
@@ -780,37 +834,115 @@ static void create_weather_visual(lv_obj_t *parent)
     set_weather_icon_mode(WEATHER_ICON_PARTLY_CLOUDY);
 }
 
-static void create_ui(void)
+static void update_page_indicator(void)
 {
-    const lv_coord_t content_x = 16;
-    const lv_coord_t content_y = 66;
-    const lv_coord_t panel_h = 398;
-    const lv_coord_t panel_gap = 12;
-    const lv_coord_t clock_panel_w = 280;
-    const lv_coord_t weather_panel_w = 240;
-    const lv_coord_t music_panel_w = 240;
+    for (int i = 0; i < UI_PAGE_COUNT; i++) {
+        if (s_ui.page_dots[i]) {
+            lv_obj_set_style_text_color(s_ui.page_dots[i],
+                                        i == s_ui.active_page ? lv_color_hex(0x68C1FF) : lv_color_hex(0x38556D),
+                                        0);
+        }
+    }
 
-    lv_obj_t *screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x07111C), 0);
-    lv_obj_set_style_bg_grad_color(screen, lv_color_hex(0x10263D), 0);
-    lv_obj_set_style_bg_grad_dir(screen, LV_GRAD_DIR_VER, 0);
+    set_label_text_if_changed(s_ui.page_name_label,
+                              s_ui.page_title_text,
+                              sizeof(s_ui.page_title_text),
+                              s_page_names[s_ui.active_page]);
+}
 
-    lv_obj_t *glow_left = lv_obj_create(screen);
-    lv_obj_set_size(glow_left, 220, 220);
-    lv_obj_set_pos(glow_left, -40, -70);
-    lv_obj_set_style_radius(glow_left, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(glow_left, 0, 0);
-    lv_obj_set_style_bg_color(glow_left, lv_color_hex(0x184C77), 0);
-    lv_obj_set_style_bg_opa(glow_left, LV_OPA_20, 0);
+static void switch_to_page(int page, lv_anim_enable_t anim_en)
+{
+    LV_UNUSED(anim_en);
 
-    lv_obj_t *glow_right = lv_obj_create(screen);
-    lv_obj_set_size(glow_right, 180, 180);
-    lv_obj_set_pos(glow_right, 606, 278);
-    lv_obj_set_style_radius(glow_right, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(glow_right, 0, 0);
-    lv_obj_set_style_bg_color(glow_right, lv_color_hex(0xFFB057), 0);
-    lv_obj_set_style_bg_opa(glow_right, LV_OPA_20, 0);
+    if (!s_ui.tileview) {
+        return;
+    }
 
+    if (page < 0) {
+        page = 0;
+    } else if (page >= UI_PAGE_COUNT) {
+        page = UI_PAGE_COUNT - 1;
+    }
+
+    s_ui.active_page = page;
+    for (int i = 0; i < UI_PAGE_COUNT; i++) {
+        set_obj_hidden(s_ui.pages[i], i != s_ui.active_page);
+    }
+    update_page_indicator();
+}
+
+static void process_pending_swipe(void)
+{
+    int delta = s_pending_page_delta;
+
+    if (delta == 0) {
+        return;
+    }
+
+    s_pending_page_delta = 0;
+    switch_to_page(s_ui.active_page + delta, LV_ANIM_OFF);
+}
+
+static void show_image_or_placeholder(lv_obj_t *image,
+                                      lv_obj_t *placeholder,
+                                      const char *src,
+                                      const char *fallback_symbol)
+{
+    if (src && src[0] != '\0') {
+        lv_image_set_src(image, src);
+        set_obj_hidden(image, false);
+        set_obj_hidden(placeholder, true);
+        return;
+    }
+
+    if (fallback_symbol) {
+        lv_label_set_text(placeholder, fallback_symbol);
+    }
+    set_obj_hidden(image, true);
+    set_obj_hidden(placeholder, false);
+}
+
+static void photo_nav_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    intptr_t delta = (intptr_t)lv_event_get_user_data(e);
+    int count = media_library_get_photo_count();
+    if (count <= 0) {
+        return;
+    }
+
+    s_ui.current_photo_index = (s_ui.current_photo_index + (int)delta + count) % count;
+    update_photo_view();
+}
+
+static void music_item_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    int index = (int)(intptr_t)lv_event_get_user_data(e);
+    if (audio_player_play_index(index) == ESP_OK) {
+        ui_music_player_update();
+    }
+}
+
+static void video_card_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    s_ui.current_video_index = (int)(intptr_t)lv_event_get_user_data(e);
+    update_video_preview();
+    update_video_card_selection();
+}
+
+static void create_status_bar(lv_obj_t *screen)
+{
     lv_obj_t *status_bar = lv_obj_create(screen);
     lv_obj_set_size(status_bar, LCD_H_RES - 32, 38);
     lv_obj_set_pos(status_bar, 16, 12);
@@ -823,8 +955,7 @@ static void create_ui(void)
 
     s_ui.status_label = lv_label_create(status_bar);
     lv_obj_set_width(s_ui.status_label, 560);
-    lv_obj_set_style_text_font(s_ui.status_label, ui_font_manager_get_font_16(), 0);
-    lv_obj_set_style_text_color(s_ui.status_label, lv_color_hex(0xB9C7D8), 0);
+    style_body_label(s_ui.status_label, lv_color_hex(0xB9C7D8));
     lv_label_set_long_mode(s_ui.status_label, LV_LABEL_LONG_CLIP);
     lv_obj_align(s_ui.status_label, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -841,93 +972,380 @@ static void create_ui(void)
 
     s_ui.network_icon_label = lv_label_create(status_metrics);
     lv_obj_set_style_text_font(s_ui.network_icon_label, LV_FONT_DEFAULT, 0);
-    lv_obj_set_style_text_color(s_ui.network_icon_label, lv_color_hex(0x6C7A88), 0);
 
     s_ui.network_value_label = lv_label_create(status_metrics);
     lv_obj_set_style_text_font(s_ui.network_value_label, LV_FONT_DEFAULT, 0);
-    lv_obj_set_style_text_color(s_ui.network_value_label, lv_color_hex(0x6C7A88), 0);
 
     s_ui.battery_icon_label = lv_label_create(status_metrics);
     lv_obj_set_style_text_font(s_ui.battery_icon_label, LV_FONT_DEFAULT, 0);
-    lv_obj_set_style_text_color(s_ui.battery_icon_label, lv_color_hex(0x6C7A88), 0);
 
     s_ui.battery_label = lv_label_create(status_metrics);
     lv_obj_set_style_text_font(s_ui.battery_label, LV_FONT_DEFAULT, 0);
-    lv_obj_set_style_text_color(s_ui.battery_label, lv_color_hex(0x6C7A88), 0);
+}
 
-    lv_obj_t *left_panel = lv_obj_create(screen);
-    lv_obj_set_size(left_panel, clock_panel_w, panel_h);
-    lv_obj_set_pos(left_panel, content_x, content_y);
-    style_panel(left_panel);
+static void create_page_indicator(lv_obj_t *screen)
+{
+    lv_obj_t *wrap = lv_obj_create(screen);
+    lv_obj_set_size(wrap, 150, 26);
+    lv_obj_set_pos(wrap, (LCD_H_RES - 150) / 2, 450);
+    lv_obj_set_style_radius(wrap, 13, 0);
+    lv_obj_set_style_border_width(wrap, 1, 0);
+    lv_obj_set_style_border_color(wrap, lv_color_hex(0x213A51), 0);
+    lv_obj_set_style_bg_color(wrap, lv_color_hex(0x0C1724), 0);
+    lv_obj_set_style_bg_opa(wrap, LV_OPA_90, 0);
+    lv_obj_set_style_pad_all(wrap, 0, 0);
 
-    lv_obj_t *clock_title = lv_label_create(left_panel);
-    lv_obj_set_pos(clock_title, 0, 0);
-    style_small_cjk_label(clock_title, lv_color_hex(0x68C1FF));
-    lv_label_set_text(clock_title, "时间");
+    for (int i = 0; i < UI_PAGE_COUNT; i++) {
+        s_ui.page_dots[i] = lv_label_create(wrap);
+        lv_obj_set_pos(s_ui.page_dots[i], 10 + (i * 16), 5);
+        lv_obj_set_style_text_font(s_ui.page_dots[i], LV_FONT_DEFAULT, 0);
+        lv_label_set_text(s_ui.page_dots[i], LV_SYMBOL_BULLET);
+    }
 
-    s_ui.time_label = lv_label_create(left_panel);
+    s_ui.page_name_label = lv_label_create(wrap);
+    lv_obj_set_pos(s_ui.page_name_label, 78, 4);
+    style_body_label(s_ui.page_name_label, lv_color_hex(0xBFD3E6));
+    update_page_indicator();
+}
+
+static void create_home_page(lv_obj_t *page)
+{
+    lv_obj_t *calendar_panel = lv_obj_create(page);
+    lv_obj_set_size(calendar_panel, 436, 388);
+    lv_obj_set_pos(calendar_panel, 0, 0);
+    style_panel(calendar_panel);
+
+    lv_obj_t *calendar_head = lv_label_create(calendar_panel);
+    lv_obj_set_pos(calendar_head, 0, 0);
+    style_section_title(calendar_head);
+    lv_label_set_text(calendar_head, "本月日历");
+
+    s_ui.calendar_title_label = lv_label_create(calendar_panel);
+    lv_obj_set_pos(s_ui.calendar_title_label, 0, 24);
+    lv_obj_set_width(s_ui.calendar_title_label, LV_PCT(100));
+    style_body_label(s_ui.calendar_title_label, lv_color_hex(0xFFFFFF));
+    lv_obj_set_style_text_align(s_ui.calendar_title_label, LV_TEXT_ALIGN_LEFT, 0);
+
+    for (int i = 0; i < UI_CALENDAR_COLS; i++) {
+        s_ui.calendar_weekday_labels[i] = lv_label_create(calendar_panel);
+        lv_obj_set_size(s_ui.calendar_weekday_labels[i], 48, LV_SIZE_CONTENT);
+        lv_obj_set_pos(s_ui.calendar_weekday_labels[i], 4 + (i * 56), 58);
+        style_body_label(s_ui.calendar_weekday_labels[i],
+                         i >= 5 ? lv_color_hex(0xFFB057) : lv_color_hex(0x8FB4D7));
+        lv_obj_set_style_text_align(s_ui.calendar_weekday_labels[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_text(s_ui.calendar_weekday_labels[i], s_calendar_headers[i]);
+    }
+
+    for (int i = 0; i < UI_CALENDAR_CELL_COUNT; i++) {
+        int col = i % UI_CALENDAR_COLS;
+        int row = i / UI_CALENDAR_COLS;
+        s_ui.calendar_day_cells[i] = lv_obj_create(calendar_panel);
+        lv_obj_set_size(s_ui.calendar_day_cells[i], 48, 42);
+        lv_obj_set_pos(s_ui.calendar_day_cells[i], 4 + (col * 56), 90 + (row * 46));
+        style_chip(s_ui.calendar_day_cells[i], lv_color_hex(0x111F2D));
+
+        s_ui.calendar_day_labels[i] = lv_label_create(s_ui.calendar_day_cells[i]);
+        lv_obj_set_size(s_ui.calendar_day_labels[i], LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_center(s_ui.calendar_day_labels[i]);
+        style_body_label(s_ui.calendar_day_labels[i], lv_color_hex(0xD6E2EF));
+        lv_obj_set_style_text_align(s_ui.calendar_day_labels[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_text(s_ui.calendar_day_labels[i], "");
+    }
+
+    lv_obj_t *time_panel = lv_obj_create(page);
+    lv_obj_set_size(time_panel, 320, 150);
+    lv_obj_set_pos(time_panel, 448, 0);
+    style_panel(time_panel);
+
+    lv_obj_t *time_head = lv_label_create(time_panel);
+    lv_obj_set_pos(time_head, 0, 0);
+    style_section_title(time_head);
+    lv_label_set_text(time_head, "时间");
+
+    s_ui.time_label = lv_label_create(time_panel);
     lv_obj_set_width(s_ui.time_label, LV_PCT(100));
+    lv_obj_set_pos(s_ui.time_label, 0, 34);
     lv_obj_set_style_text_font(s_ui.time_label, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(s_ui.time_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_align(s_ui.time_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(s_ui.time_label, 0, 224);
 
-    s_ui.date_label = lv_label_create(left_panel);
-    lv_obj_set_pos(s_ui.date_label, 0, 284);
+    s_ui.date_label = lv_label_create(time_panel);
     lv_obj_set_width(s_ui.date_label, LV_PCT(100));
-    style_small_cjk_label(s_ui.date_label, lv_color_hex(0xA7B5C8));
+    lv_obj_set_pos(s_ui.date_label, 0, 96);
+    style_body_label(s_ui.date_label, lv_color_hex(0xA7B5C8));
     lv_obj_set_style_text_align(s_ui.date_label, LV_TEXT_ALIGN_CENTER, 0);
 
-    create_clock_visual(left_panel);
-
-    lv_obj_t *weather_panel = lv_obj_create(screen);
-    lv_obj_set_size(weather_panel, weather_panel_w, panel_h);
-    lv_obj_set_pos(weather_panel, content_x + clock_panel_w + panel_gap, content_y);
+    lv_obj_t *weather_panel = lv_obj_create(page);
+    lv_obj_set_size(weather_panel, 320, 226);
+    lv_obj_set_pos(weather_panel, 448, 162);
     style_panel(weather_panel);
 
     lv_obj_t *weather_head = lv_label_create(weather_panel);
     lv_obj_set_pos(weather_head, 0, 0);
-    style_small_cjk_label(weather_head, lv_color_hex(0x68C1FF));
-    lv_label_set_text(weather_head, "天气");
+    style_section_title(weather_head);
+    lv_label_set_text(weather_head, "天气信息");
 
     s_ui.weather_title = lv_label_create(weather_panel);
     lv_obj_set_pos(s_ui.weather_title, 0, 26);
-    lv_obj_set_width(s_ui.weather_title, 104);
-    style_small_cjk_label(s_ui.weather_title, lv_color_hex(0xFFFFFF));
+    lv_obj_set_width(s_ui.weather_title, 160);
+    style_body_label(s_ui.weather_title, lv_color_hex(0xFFFFFF));
 
     s_ui.weather_temp = lv_label_create(weather_panel);
-    lv_obj_set_pos(s_ui.weather_temp, 0, 56);
+    lv_obj_set_pos(s_ui.weather_temp, 0, 52);
     lv_obj_set_style_text_font(s_ui.weather_temp, &lv_font_montserrat_32, 0);
     lv_obj_set_style_text_color(s_ui.weather_temp, lv_color_hex(0xFFFFFF), 0);
 
     s_ui.weather_cond = lv_label_create(weather_panel);
-    lv_obj_set_pos(s_ui.weather_cond, 0, 102);
-    lv_obj_set_width(s_ui.weather_cond, 104);
-    style_small_cjk_label(s_ui.weather_cond, lv_color_hex(0x68C1FF));
+    lv_obj_set_pos(s_ui.weather_cond, 0, 96);
+    lv_obj_set_width(s_ui.weather_cond, 160);
+    style_body_label(s_ui.weather_cond, lv_color_hex(0x68C1FF));
 
     create_weather_visual(weather_panel);
+    create_detail_card(weather_panel, &s_ui.detail_humidity, 0, 118);
+    create_detail_card(weather_panel, &s_ui.detail_feels, 138, 118);
+    create_detail_card(weather_panel, &s_ui.detail_wind, 0, 160);
+    create_detail_card(weather_panel, &s_ui.detail_vis, 138, 160);
+}
 
-    lv_obj_t *forecast_title = lv_label_create(weather_panel);
-    lv_obj_set_pos(forecast_title, 0, 220);
-    style_small_cjk_label(forecast_title, lv_color_hex(0x68C1FF));
-    lv_label_set_text(forecast_title, "3日天气");
+static void create_photo_page(lv_obj_t *page)
+{
+    lv_obj_t *preview_panel = lv_obj_create(page);
+    lv_obj_set_size(preview_panel, 518, 388);
+    lv_obj_set_pos(preview_panel, 0, 0);
+    style_panel(preview_panel);
 
-    create_detail_card(weather_panel, &s_ui.detail_humidity, 0, 132);
-    create_detail_card(weather_panel, &s_ui.detail_feels, 108, 132);
-    create_detail_card(weather_panel, &s_ui.detail_wind, 0, 172);
-    create_detail_card(weather_panel, &s_ui.detail_vis, 108, 172);
+    lv_obj_t *photo_head = lv_label_create(preview_panel);
+    lv_obj_set_pos(photo_head, 0, 0);
+    style_section_title(photo_head);
+    lv_label_set_text(photo_head, "Picture 轮播");
 
-    create_forecast_card(weather_panel, 0, 0);
-    create_forecast_card(weather_panel, 1, 72);
-    create_forecast_card(weather_panel, 2, 144);
+    lv_obj_t *photo_frame = lv_obj_create(preview_panel);
+    lv_obj_set_size(photo_frame, 482, 300);
+    lv_obj_set_pos(photo_frame, 0, 32);
+    style_thumb_frame(photo_frame);
 
-    set_label_text_if_changed(s_ui.weather_title, s_ui.weather_title_text, sizeof(s_ui.weather_title_text), "天气");
+    s_ui.photo_image = lv_image_create(photo_frame);
+    lv_obj_set_size(s_ui.photo_image, LV_PCT(100), LV_PCT(100));
+    lv_image_set_inner_align(s_ui.photo_image, LV_IMAGE_ALIGN_STRETCH);
 
-    ui_music_player_create(screen,
-                           content_x + clock_panel_w + weather_panel_w + (panel_gap * 2),
-                           content_y,
-                           music_panel_w,
-                           panel_h);
+    s_ui.photo_placeholder_icon = lv_label_create(photo_frame);
+    lv_obj_center(s_ui.photo_placeholder_icon);
+    lv_obj_set_style_text_font(s_ui.photo_placeholder_icon, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(s_ui.photo_placeholder_icon, lv_color_hex(0x4C6B86), 0);
+    lv_label_set_text(s_ui.photo_placeholder_icon, LV_SYMBOL_IMAGE);
+
+    lv_obj_t *info_panel = lv_obj_create(page);
+    lv_obj_set_size(info_panel, 238, 388);
+    lv_obj_set_pos(info_panel, 530, 0);
+    style_panel(info_panel);
+
+    lv_obj_t *info_head = lv_label_create(info_panel);
+    lv_obj_set_pos(info_head, 0, 0);
+    style_section_title(info_head);
+    lv_label_set_text(info_head, "当前照片");
+
+    s_ui.photo_name_label = lv_label_create(info_panel);
+    lv_obj_set_size(s_ui.photo_name_label, LV_PCT(100), 72);
+    lv_obj_set_pos(s_ui.photo_name_label, 0, 36);
+    style_body_label(s_ui.photo_name_label, lv_color_hex(0xFFFFFF));
+    lv_label_set_long_mode(s_ui.photo_name_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(s_ui.photo_name_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    s_ui.photo_meta_label = lv_label_create(info_panel);
+    lv_obj_set_size(s_ui.photo_meta_label, LV_PCT(100), 40);
+    lv_obj_set_pos(s_ui.photo_meta_label, 0, 118);
+    style_body_label(s_ui.photo_meta_label, lv_color_hex(0x8FB4D7));
+    lv_obj_set_style_text_align(s_ui.photo_meta_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    s_ui.photo_status_label = lv_label_create(info_panel);
+    lv_obj_set_size(s_ui.photo_status_label, LV_PCT(100), 80);
+    lv_obj_set_pos(s_ui.photo_status_label, 0, 164);
+    style_body_label(s_ui.photo_status_label, lv_color_hex(0xB8C8D7));
+    lv_label_set_long_mode(s_ui.photo_status_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(s_ui.photo_status_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_t *btn_prev = lv_button_create(info_panel);
+    lv_obj_set_size(btn_prev, 82, 46);
+    lv_obj_set_pos(btn_prev, 10, 300);
+    lv_obj_add_event_cb(btn_prev, photo_nav_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)-1);
+    style_chip(btn_prev, lv_color_hex(0x15273A));
+
+    lv_obj_t *btn_prev_label = lv_label_create(btn_prev);
+    lv_obj_center(btn_prev_label);
+    lv_obj_set_style_text_font(btn_prev_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(btn_prev_label, lv_color_hex(0x68C1FF), 0);
+    lv_label_set_text(btn_prev_label, LV_SYMBOL_PREV);
+
+    lv_obj_t *btn_next = lv_button_create(info_panel);
+    lv_obj_set_size(btn_next, 82, 46);
+    lv_obj_set_pos(btn_next, 110, 300);
+    lv_obj_add_event_cb(btn_next, photo_nav_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)1);
+    style_chip(btn_next, lv_color_hex(0x15273A));
+
+    lv_obj_t *btn_next_label = lv_label_create(btn_next);
+    lv_obj_center(btn_next_label);
+    lv_obj_set_style_text_font(btn_next_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(btn_next_label, lv_color_hex(0x68C1FF), 0);
+    lv_label_set_text(btn_next_label, LV_SYMBOL_NEXT);
+}
+
+static void create_music_page(lv_obj_t *page)
+{
+    ui_music_player_create(page, 0, 0, 272, 388);
+
+    lv_obj_t *list_panel = lv_obj_create(page);
+    lv_obj_set_size(list_panel, 484, 388);
+    lv_obj_set_pos(list_panel, 284, 0);
+    style_panel(list_panel);
+
+    lv_obj_t *list_head = lv_label_create(list_panel);
+    lv_obj_set_pos(list_head, 0, 0);
+    style_section_title(list_head);
+    lv_label_set_text(list_head, "Music 列表");
+
+    s_ui.music_list_wrap = lv_obj_create(list_panel);
+    lv_obj_set_size(s_ui.music_list_wrap, LV_PCT(100), 330);
+    lv_obj_set_pos(s_ui.music_list_wrap, 0, 36);
+    lv_obj_set_style_bg_opa(s_ui.music_list_wrap, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_ui.music_list_wrap, 0, 0);
+    lv_obj_set_style_pad_all(s_ui.music_list_wrap, 0, 0);
+    lv_obj_set_scroll_dir(s_ui.music_list_wrap, LV_DIR_VER);
+    lv_obj_add_flag(s_ui.music_list_wrap, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_set_scrollbar_mode(s_ui.music_list_wrap, LV_SCROLLBAR_MODE_AUTO);
+
+    s_ui.music_empty_label = lv_label_create(s_ui.music_list_wrap);
+    lv_obj_set_width(s_ui.music_empty_label, LV_PCT(100));
+    lv_obj_align(s_ui.music_empty_label, LV_ALIGN_CENTER, 0, 0);
+    style_body_label(s_ui.music_empty_label, lv_color_hex(0x7D92A9));
+    lv_obj_set_style_text_align(s_ui.music_empty_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(s_ui.music_empty_label, "等待 SD 卡中的 Music 目录");
+}
+
+static void create_video_page(lv_obj_t *page)
+{
+    lv_obj_t *preview_panel = lv_obj_create(page);
+    lv_obj_set_size(preview_panel, 296, 388);
+    lv_obj_set_pos(preview_panel, 0, 0);
+    style_panel(preview_panel);
+
+    lv_obj_t *preview_head = lv_label_create(preview_panel);
+    lv_obj_set_pos(preview_head, 0, 0);
+    style_section_title(preview_head);
+    lv_label_set_text(preview_head, "视频预览");
+
+    lv_obj_t *preview_frame = lv_obj_create(preview_panel);
+    lv_obj_set_size(preview_frame, 260, 180);
+    lv_obj_set_pos(preview_frame, 0, 36);
+    style_thumb_frame(preview_frame);
+
+    s_ui.video_preview_image = lv_image_create(preview_frame);
+    lv_obj_set_size(s_ui.video_preview_image, LV_PCT(100), LV_PCT(100));
+    lv_image_set_inner_align(s_ui.video_preview_image, LV_IMAGE_ALIGN_STRETCH);
+
+    s_ui.video_preview_placeholder_icon = lv_label_create(preview_frame);
+    lv_obj_center(s_ui.video_preview_placeholder_icon);
+    lv_obj_set_style_text_font(s_ui.video_preview_placeholder_icon, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(s_ui.video_preview_placeholder_icon, lv_color_hex(0x4C6B86), 0);
+    lv_label_set_text(s_ui.video_preview_placeholder_icon, LV_SYMBOL_VIDEO);
+
+    s_ui.video_name_label = lv_label_create(preview_panel);
+    lv_obj_set_size(s_ui.video_name_label, LV_PCT(100), 64);
+    lv_obj_set_pos(s_ui.video_name_label, 0, 232);
+    style_body_label(s_ui.video_name_label, lv_color_hex(0xFFFFFF));
+    lv_label_set_long_mode(s_ui.video_name_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(s_ui.video_name_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    s_ui.video_status_label = lv_label_create(preview_panel);
+    lv_obj_set_size(s_ui.video_status_label, LV_PCT(100), 70);
+    lv_obj_set_pos(s_ui.video_status_label, 0, 304);
+    style_body_label(s_ui.video_status_label, lv_color_hex(0xA7B5C8));
+    lv_label_set_long_mode(s_ui.video_status_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(s_ui.video_status_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_t *list_panel = lv_obj_create(page);
+    lv_obj_set_size(list_panel, 460, 388);
+    lv_obj_set_pos(list_panel, 308, 0);
+    style_panel(list_panel);
+
+    lv_obj_t *list_head = lv_label_create(list_panel);
+    lv_obj_set_pos(list_head, 0, 0);
+    style_section_title(list_head);
+    lv_label_set_text(list_head, "Video 缩略图");
+
+    s_ui.video_list_wrap = lv_obj_create(list_panel);
+    lv_obj_set_size(s_ui.video_list_wrap, LV_PCT(100), 330);
+    lv_obj_set_pos(s_ui.video_list_wrap, 0, 36);
+    lv_obj_set_style_bg_opa(s_ui.video_list_wrap, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_ui.video_list_wrap, 0, 0);
+    lv_obj_set_style_pad_all(s_ui.video_list_wrap, 0, 0);
+    lv_obj_set_scroll_dir(s_ui.video_list_wrap, LV_DIR_VER);
+    lv_obj_add_flag(s_ui.video_list_wrap, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_set_scrollbar_mode(s_ui.video_list_wrap, LV_SCROLLBAR_MODE_AUTO);
+
+    s_ui.video_empty_label = lv_label_create(s_ui.video_list_wrap);
+    lv_obj_set_width(s_ui.video_empty_label, LV_PCT(100));
+    lv_obj_align(s_ui.video_empty_label, LV_ALIGN_CENTER, 0, 0);
+    style_body_label(s_ui.video_empty_label, lv_color_hex(0x7D92A9));
+    lv_obj_set_style_text_align(s_ui.video_empty_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(s_ui.video_empty_label, "等待 Video 目录和封面图");
+}
+
+static void create_ui(void)
+{
+    lv_obj_t *screen = lv_screen_active();
+    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x07111C), 0);
+    lv_obj_set_style_bg_grad_color(screen, lv_color_hex(0x10263D), 0);
+    lv_obj_set_style_bg_grad_dir(screen, LV_GRAD_DIR_VER, 0);
+
+    lv_obj_t *glow_left = lv_obj_create(screen);
+    lv_obj_clear_flag(glow_left, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(glow_left, 220, 220);
+    lv_obj_set_pos(glow_left, -40, -70);
+    lv_obj_set_style_radius(glow_left, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(glow_left, 0, 0);
+    lv_obj_set_style_bg_color(glow_left, lv_color_hex(0x184C77), 0);
+    lv_obj_set_style_bg_opa(glow_left, LV_OPA_20, 0);
+
+    lv_obj_t *glow_right = lv_obj_create(screen);
+    lv_obj_clear_flag(glow_right, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(glow_right, 180, 180);
+    lv_obj_set_pos(glow_right, 606, 278);
+    lv_obj_set_style_radius(glow_right, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(glow_right, 0, 0);
+    lv_obj_set_style_bg_color(glow_right, lv_color_hex(0xFFB057), 0);
+    lv_obj_set_style_bg_opa(glow_right, LV_OPA_20, 0);
+
+    create_status_bar(screen);
+
+    s_ui.tileview = lv_obj_create(screen);
+    lv_obj_clear_flag(s_ui.tileview, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(s_ui.tileview, LCD_H_RES - 32, 388);
+    lv_obj_set_pos(s_ui.tileview, 16, 66);
+    lv_obj_set_style_bg_opa(s_ui.tileview, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_ui.tileview, 0, 0);
+    lv_obj_set_style_pad_all(s_ui.tileview, 0, 0);
+    lv_obj_set_scrollbar_mode(s_ui.tileview, LV_SCROLLBAR_MODE_OFF);
+
+    for (int i = 0; i < UI_PAGE_COUNT; i++) {
+        s_ui.pages[i] = lv_obj_create(s_ui.tileview);
+        lv_obj_set_size(s_ui.pages[i], LV_PCT(100), LV_PCT(100));
+        lv_obj_set_pos(s_ui.pages[i], 0, 0);
+    }
+
+    for (int i = 0; i < UI_PAGE_COUNT; i++) {
+        lv_obj_clear_flag(s_ui.pages[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_bg_opa(s_ui.pages[i], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(s_ui.pages[i], 0, 0);
+        lv_obj_set_style_pad_all(s_ui.pages[i], 0, 0);
+    }
+
+    create_home_page(s_ui.pages[UI_PAGE_HOME]);
+    create_photo_page(s_ui.pages[UI_PAGE_PHOTO]);
+    create_music_page(s_ui.pages[UI_PAGE_MUSIC]);
+    create_video_page(s_ui.pages[UI_PAGE_VIDEO]);
+    switch_to_page(UI_PAGE_HOME, LV_ANIM_OFF);
+    create_page_indicator(screen);
 }
 
 static void update_status_text(void)
@@ -988,23 +1406,99 @@ static void update_status_text(void)
     set_label_text_if_changed(s_ui.battery_icon_label, s_ui.battery_icon_text, sizeof(s_ui.battery_icon_text), new_battery_icon);
     set_label_text_if_changed(s_ui.battery_label, s_ui.battery_text, sizeof(s_ui.battery_text), new_battery);
 
-    if (s_ui.network_icon_label) {
+    if (!s_ui.status_colors_valid ||
+        memcmp(&s_ui.rendered_network_color, &network_color, sizeof(network_color)) != 0) {
         lv_obj_set_style_text_color(s_ui.network_icon_label, network_color, 0);
-    }
-    if (s_ui.network_value_label) {
         lv_obj_set_style_text_color(s_ui.network_value_label, network_color, 0);
+        s_ui.rendered_network_color = network_color;
     }
-    if (s_ui.battery_icon_label) {
+    if (!s_ui.status_colors_valid ||
+        memcmp(&s_ui.rendered_battery_color, &battery_color, sizeof(battery_color)) != 0) {
         lv_obj_set_style_text_color(s_ui.battery_icon_label, battery_color, 0);
-    }
-    if (s_ui.battery_label) {
         lv_obj_set_style_text_color(s_ui.battery_label, battery_color, 0);
+        s_ui.rendered_battery_color = battery_color;
     }
+    s_ui.status_colors_valid = true;
+}
+
+static void update_calendar_view(const struct tm *now)
+{
+    if (!now) {
+        if (!s_ui.calendar_rendered_valid &&
+            strncmp(s_ui.calendar_title_text, "等待授时", sizeof(s_ui.calendar_title_text)) == 0) {
+            return;
+        }
+        set_label_text_if_changed(s_ui.calendar_title_label,
+                                  s_ui.calendar_title_text,
+                                  sizeof(s_ui.calendar_title_text),
+                                  "等待授时");
+        for (int i = 0; i < UI_CALENDAR_CELL_COUNT; i++) {
+            lv_label_set_text(s_ui.calendar_day_labels[i], "");
+            lv_obj_set_style_bg_color(s_ui.calendar_day_cells[i], lv_color_hex(0x111F2D), 0);
+            lv_obj_set_style_border_color(s_ui.calendar_day_cells[i], lv_color_hex(0x25435C), 0);
+        }
+        s_ui.calendar_rendered_valid = false;
+        return;
+    }
+
+    if (s_ui.calendar_rendered_valid &&
+        s_ui.rendered_calendar_year == now->tm_year &&
+        s_ui.rendered_calendar_month == now->tm_mon &&
+        s_ui.rendered_calendar_day == now->tm_mday) {
+        return;
+    }
+
+    snprintf(s_ui.calendar_title_text, sizeof(s_ui.calendar_title_text),
+             "%04d年%02d月", now->tm_year + 1900, now->tm_mon + 1);
+    lv_label_set_text(s_ui.calendar_title_label, s_ui.calendar_title_text);
+
+    struct tm first_day = {
+        .tm_year = now->tm_year,
+        .tm_mon = now->tm_mon,
+        .tm_mday = 1,
+        .tm_isdst = -1,
+    };
+    mktime(&first_day);
+
+    int start_col = (first_day.tm_wday + 6) % 7;
+    int total_days = days_in_month(now->tm_year + 1900, now->tm_mon + 1);
+
+    for (int i = 0; i < UI_CALENDAR_CELL_COUNT; i++) {
+        int day = i - start_col + 1;
+        bool in_month = day >= 1 && day <= total_days;
+        bool is_today = in_month && day == now->tm_mday;
+        bool weekend = (i % UI_CALENDAR_COLS) >= 5;
+
+        if (in_month) {
+            char day_text[8];
+            snprintf(day_text, sizeof(day_text), "%d", day);
+            lv_label_set_text(s_ui.calendar_day_labels[i], day_text);
+            lv_obj_set_style_text_color(s_ui.calendar_day_labels[i],
+                                        is_today ? lv_color_hex(0xFFFFFF) :
+                                        (weekend ? lv_color_hex(0xFFB057) : lv_color_hex(0xD6E2EF)),
+                                        0);
+            lv_obj_set_style_bg_color(s_ui.calendar_day_cells[i],
+                                      is_today ? lv_color_hex(0xFF8D3A) : lv_color_hex(0x111F2D),
+                                      0);
+            lv_obj_set_style_border_color(s_ui.calendar_day_cells[i],
+                                          is_today ? lv_color_hex(0xFFD0A5) : lv_color_hex(0x25435C),
+                                          0);
+        } else {
+            lv_label_set_text(s_ui.calendar_day_labels[i], "");
+            lv_obj_set_style_bg_color(s_ui.calendar_day_cells[i], lv_color_hex(0x101721), 0);
+            lv_obj_set_style_border_color(s_ui.calendar_day_cells[i], lv_color_hex(0x1C3145), 0);
+        }
+    }
+
+    s_ui.rendered_calendar_year = now->tm_year;
+    s_ui.rendered_calendar_month = now->tm_mon;
+    s_ui.rendered_calendar_day = now->tm_mday;
+    s_ui.calendar_rendered_valid = true;
 }
 
 static void update_clock_text(void)
 {
-    struct tm now;
+    struct tm now = {0};
     char new_time[sizeof(s_ui.time_text)];
     char new_date[sizeof(s_ui.date_text)];
 
@@ -1013,6 +1507,7 @@ static void update_clock_text(void)
         strlcpy(new_date, "等待 NTP 同步", sizeof(new_date));
         set_label_text_if_changed(s_ui.time_label, s_ui.time_text, sizeof(s_ui.time_text), new_time);
         set_label_text_if_changed(s_ui.date_label, s_ui.date_text, sizeof(s_ui.date_text), new_date);
+        update_calendar_view(NULL);
         return;
     }
 
@@ -1024,7 +1519,7 @@ static void update_clock_text(void)
 
     set_label_text_if_changed(s_ui.time_label, s_ui.time_text, sizeof(s_ui.time_text), new_time);
     set_label_text_if_changed(s_ui.date_label, s_ui.date_text, sizeof(s_ui.date_text), new_date);
-    update_clock_visual(&now);
+    update_calendar_view(&now);
 }
 
 static void update_weather_text(void)
@@ -1069,7 +1564,6 @@ static void update_weather_text(void)
         set_weather_icon_mode(WEATHER_ICON_PARTLY_CLOUDY);
     } else {
         strlcpy(weather_title_text, "当前天气", sizeof(weather_title_text));
-
         snprintf(weather_temp_text, sizeof(weather_temp_text), "%d%sC", weather->temp_now, UI_DEGREE_SYMBOL);
         snprintf(weather_cond_text, sizeof(weather_cond_text), "%s", weather_condition_text(weather->icon_code));
         snprintf(detail_humidity_text, sizeof(detail_humidity_text), "湿度 %u%%", weather->humidity);
@@ -1102,48 +1596,353 @@ static void update_weather_text(void)
     }
 }
 
+static void update_photo_view(void)
+{
+    int count = media_library_get_photo_count();
+    if (count <= 0) {
+        s_ui.current_photo_index = 0;
+        s_ui.rendered_photo_index = -1;
+        s_ui.rendered_photo_count = 0;
+        show_image_or_placeholder(s_ui.photo_image, s_ui.photo_placeholder_icon, NULL, LV_SYMBOL_IMAGE);
+        set_label_text_if_changed(s_ui.photo_name_label,
+                                  s_ui.photo_name_text,
+                                  sizeof(s_ui.photo_name_text),
+                                  "Picture 目录为空");
+        set_label_text_if_changed(s_ui.photo_meta_label,
+                                  s_ui.photo_meta_text,
+                                  sizeof(s_ui.photo_meta_text),
+                                  "0 / 0");
+        set_label_text_if_changed(s_ui.photo_status_label,
+                                  s_ui.photo_status_text,
+                                  sizeof(s_ui.photo_status_text),
+                                  "请把照片放到 SD 卡的 Picture 目录下，支持 JPG / PNG / BMP。");
+        return;
+    }
+
+    if (s_ui.current_photo_index < 0 || s_ui.current_photo_index >= count) {
+        s_ui.current_photo_index = 0;
+    }
+
+    if (s_ui.rendered_photo_index == s_ui.current_photo_index &&
+        s_ui.rendered_photo_count == count &&
+        s_ui.photo_name_text[0] != '\0') {
+        return;
+    }
+
+    const media_library_entry_t *entry = media_library_get_photo(s_ui.current_photo_index);
+    if (!entry) {
+        return;
+    }
+
+    show_image_or_placeholder(s_ui.photo_image,
+                              s_ui.photo_placeholder_icon,
+                              entry->preview_lvgl_path,
+                              LV_SYMBOL_IMAGE);
+
+    set_label_text_if_changed(s_ui.photo_name_label,
+                              s_ui.photo_name_text,
+                              sizeof(s_ui.photo_name_text),
+                              entry->name);
+
+    snprintf(s_ui.photo_meta_text, sizeof(s_ui.photo_meta_text),
+             "%d / %d", s_ui.current_photo_index + 1, count);
+    lv_label_set_text(s_ui.photo_meta_label, s_ui.photo_meta_text);
+
+    set_label_text_if_changed(s_ui.photo_status_label,
+                              s_ui.photo_status_text,
+                              sizeof(s_ui.photo_status_text),
+                              count > 1 ? "轮播中，可在本屏停留自动切换，也可点左右键手动切换。" :
+                                          "当前仅有 1 张照片。");
+    s_ui.rendered_photo_index = s_ui.current_photo_index;
+    s_ui.rendered_photo_count = count;
+}
+
+static void rebuild_music_list(void)
+{
+    int count = audio_player_get_track_count();
+
+    s_ui.music_item_count = 0;
+    s_ui.rendered_music_track = -2;
+    memset(s_ui.music_item_btn, 0, sizeof(s_ui.music_item_btn));
+    memset(s_ui.music_item_index_label, 0, sizeof(s_ui.music_item_index_label));
+    memset(s_ui.music_item_title_label, 0, sizeof(s_ui.music_item_title_label));
+    lv_obj_clean(s_ui.music_list_wrap);
+
+    if (count <= 0) {
+        s_ui.music_empty_label = lv_label_create(s_ui.music_list_wrap);
+        lv_obj_set_width(s_ui.music_empty_label, LV_PCT(100));
+        lv_obj_align(s_ui.music_empty_label, LV_ALIGN_CENTER, 0, 0);
+        style_body_label(s_ui.music_empty_label, lv_color_hex(0x7D92A9));
+        lv_obj_set_style_text_align(s_ui.music_empty_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_text(s_ui.music_empty_label, "Music 目录暂无可播放文件");
+        return;
+    }
+
+    for (int i = 0; i < count && i < AUDIO_MAX_PLAYLIST_SIZE; i++) {
+        audio_track_info_t info = {0};
+        if (audio_player_get_track_info(i, &info) != ESP_OK) {
+            continue;
+        }
+
+        s_ui.music_item_btn[s_ui.music_item_count] = lv_button_create(s_ui.music_list_wrap);
+        lv_obj_set_size(s_ui.music_item_btn[s_ui.music_item_count], LV_PCT(100), 52);
+        lv_obj_set_pos(s_ui.music_item_btn[s_ui.music_item_count], 0, s_ui.music_item_count * 58);
+        lv_obj_add_event_cb(s_ui.music_item_btn[s_ui.music_item_count],
+                            music_item_event_cb,
+                            LV_EVENT_CLICKED,
+                            (void *)(intptr_t)i);
+        style_chip(s_ui.music_item_btn[s_ui.music_item_count], lv_color_hex(0x132334));
+        lv_obj_set_style_pad_left(s_ui.music_item_btn[s_ui.music_item_count], 14, 0);
+        lv_obj_set_style_pad_right(s_ui.music_item_btn[s_ui.music_item_count], 14, 0);
+
+        s_ui.music_item_index_label[s_ui.music_item_count] = lv_label_create(s_ui.music_item_btn[s_ui.music_item_count]);
+        lv_obj_set_pos(s_ui.music_item_index_label[s_ui.music_item_count], 0, 14);
+        style_body_label(s_ui.music_item_index_label[s_ui.music_item_count], lv_color_hex(0x68C1FF));
+        lv_label_set_text_fmt(s_ui.music_item_index_label[s_ui.music_item_count], "%02d", i + 1);
+
+        s_ui.music_item_title_label[s_ui.music_item_count] = lv_label_create(s_ui.music_item_btn[s_ui.music_item_count]);
+        lv_obj_set_size(s_ui.music_item_title_label[s_ui.music_item_count], 360, LV_SIZE_CONTENT);
+        lv_obj_set_pos(s_ui.music_item_title_label[s_ui.music_item_count], 48, 14);
+        style_body_label(s_ui.music_item_title_label[s_ui.music_item_count], lv_color_hex(0xFFFFFF));
+        lv_label_set_long_mode(s_ui.music_item_title_label[s_ui.music_item_count], LV_LABEL_LONG_DOT);
+        lv_label_set_text(s_ui.music_item_title_label[s_ui.music_item_count], info.title);
+
+        s_ui.music_item_count++;
+    }
+}
+
+static void update_music_list_selection(void)
+{
+    audio_player_status_t status = {0};
+    if (audio_player_get_status(&status) != ESP_OK) {
+        return;
+    }
+
+    if (status.current_track == s_ui.rendered_music_track) {
+        return;
+    }
+
+    for (int i = 0; i < s_ui.music_item_count; i++) {
+        bool selected = status.current_track == i;
+        lv_obj_set_style_bg_color(s_ui.music_item_btn[i],
+                                  selected ? lv_color_hex(0x21415F) : lv_color_hex(0x132334),
+                                  0);
+        lv_obj_set_style_border_color(s_ui.music_item_btn[i],
+                                      selected ? lv_color_hex(0x68C1FF) : lv_color_hex(0x25435C),
+                                      0);
+        lv_obj_set_style_text_color(s_ui.music_item_index_label[i],
+                                    selected ? lv_color_hex(0xFFB057) : lv_color_hex(0x68C1FF),
+                                    0);
+    }
+
+    s_ui.rendered_music_track = status.current_track;
+}
+
+static void rebuild_video_list(void)
+{
+    int count = media_library_get_video_count();
+
+    s_ui.video_card_count = 0;
+    s_ui.rendered_video_selection_index = -2;
+    s_ui.rendered_video_selection_count = -1;
+    memset(s_ui.video_card_btn, 0, sizeof(s_ui.video_card_btn));
+    memset(s_ui.video_card_thumb_frame, 0, sizeof(s_ui.video_card_thumb_frame));
+    memset(s_ui.video_card_image, 0, sizeof(s_ui.video_card_image));
+    memset(s_ui.video_card_placeholder, 0, sizeof(s_ui.video_card_placeholder));
+    memset(s_ui.video_card_title, 0, sizeof(s_ui.video_card_title));
+    lv_obj_clean(s_ui.video_list_wrap);
+
+    if (count <= 0) {
+        s_ui.video_empty_label = lv_label_create(s_ui.video_list_wrap);
+        lv_obj_set_width(s_ui.video_empty_label, LV_PCT(100));
+        lv_obj_align(s_ui.video_empty_label, LV_ALIGN_CENTER, 0, 0);
+        style_body_label(s_ui.video_empty_label, lv_color_hex(0x7D92A9));
+        lv_obj_set_style_text_align(s_ui.video_empty_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_text(s_ui.video_empty_label, "Video 目录为空");
+        s_ui.current_video_index = -1;
+        return;
+    }
+
+    for (int i = 0; i < count && i < MEDIA_LIBRARY_MAX_ITEMS; i++) {
+        const media_library_entry_t *entry = media_library_get_video(i);
+        if (!entry) {
+            continue;
+        }
+
+        s_ui.video_card_btn[s_ui.video_card_count] = lv_button_create(s_ui.video_list_wrap);
+        lv_obj_set_size(s_ui.video_card_btn[s_ui.video_card_count], LV_PCT(100), 108);
+        lv_obj_set_pos(s_ui.video_card_btn[s_ui.video_card_count], 0, s_ui.video_card_count * 116);
+        lv_obj_add_event_cb(s_ui.video_card_btn[s_ui.video_card_count],
+                            video_card_event_cb,
+                            LV_EVENT_CLICKED,
+                            (void *)(intptr_t)i);
+        style_chip(s_ui.video_card_btn[s_ui.video_card_count], lv_color_hex(0x132334));
+        lv_obj_set_style_pad_all(s_ui.video_card_btn[s_ui.video_card_count], 10, 0);
+
+        s_ui.video_card_thumb_frame[s_ui.video_card_count] = lv_obj_create(s_ui.video_card_btn[s_ui.video_card_count]);
+        lv_obj_set_size(s_ui.video_card_thumb_frame[s_ui.video_card_count], 152, 86);
+        lv_obj_set_pos(s_ui.video_card_thumb_frame[s_ui.video_card_count], 0, 0);
+        style_thumb_frame(s_ui.video_card_thumb_frame[s_ui.video_card_count]);
+
+        s_ui.video_card_image[s_ui.video_card_count] = lv_image_create(s_ui.video_card_thumb_frame[s_ui.video_card_count]);
+        lv_obj_set_size(s_ui.video_card_image[s_ui.video_card_count], LV_PCT(100), LV_PCT(100));
+        lv_image_set_inner_align(s_ui.video_card_image[s_ui.video_card_count], LV_IMAGE_ALIGN_STRETCH);
+
+        s_ui.video_card_placeholder[s_ui.video_card_count] = lv_label_create(s_ui.video_card_thumb_frame[s_ui.video_card_count]);
+        lv_obj_center(s_ui.video_card_placeholder[s_ui.video_card_count]);
+        lv_obj_set_style_text_font(s_ui.video_card_placeholder[s_ui.video_card_count], &lv_font_montserrat_32, 0);
+        lv_obj_set_style_text_color(s_ui.video_card_placeholder[s_ui.video_card_count], lv_color_hex(0x4C6B86), 0);
+        lv_label_set_text(s_ui.video_card_placeholder[s_ui.video_card_count], LV_SYMBOL_VIDEO);
+
+        show_image_or_placeholder(s_ui.video_card_image[s_ui.video_card_count],
+                                  s_ui.video_card_placeholder[s_ui.video_card_count],
+                                  entry->has_preview ? entry->preview_lvgl_path : NULL,
+                                  LV_SYMBOL_VIDEO);
+
+        s_ui.video_card_title[s_ui.video_card_count] = lv_label_create(s_ui.video_card_btn[s_ui.video_card_count]);
+        lv_obj_set_size(s_ui.video_card_title[s_ui.video_card_count], 240, 60);
+        lv_obj_set_pos(s_ui.video_card_title[s_ui.video_card_count], 170, 14);
+        style_body_label(s_ui.video_card_title[s_ui.video_card_count], lv_color_hex(0xFFFFFF));
+        lv_label_set_long_mode(s_ui.video_card_title[s_ui.video_card_count], LV_LABEL_LONG_WRAP);
+        lv_label_set_text(s_ui.video_card_title[s_ui.video_card_count], entry->name);
+
+        lv_obj_t *hint = lv_label_create(s_ui.video_card_btn[s_ui.video_card_count]);
+        lv_obj_set_pos(hint, 170, 74);
+        style_body_label(hint, lv_color_hex(0x7D92A9));
+        lv_label_set_text(hint, entry->has_preview ? "已匹配封面图" : "缺少同名封面图");
+
+        s_ui.video_card_count++;
+    }
+
+    if (s_ui.current_video_index < 0 || s_ui.current_video_index >= count) {
+        s_ui.current_video_index = 0;
+    }
+}
+
+static void update_video_preview(void)
+{
+    int count = media_library_get_video_count();
+    if (count <= 0 || s_ui.current_video_index < 0 || s_ui.current_video_index >= count) {
+        s_ui.rendered_video_index = -1;
+        s_ui.rendered_video_count = 0;
+        show_image_or_placeholder(s_ui.video_preview_image,
+                                  s_ui.video_preview_placeholder_icon,
+                                  NULL,
+                                  LV_SYMBOL_VIDEO);
+        set_label_text_if_changed(s_ui.video_name_label,
+                                  s_ui.video_name_text,
+                                  sizeof(s_ui.video_name_text),
+                                  "暂无视频");
+        set_label_text_if_changed(s_ui.video_status_label,
+                                  s_ui.video_status_text,
+                                  sizeof(s_ui.video_status_text),
+                                  "请把视频文件放到 SD 卡的 Video 目录，并放入同名封面图。");
+        return;
+    }
+
+    if (s_ui.rendered_video_index == s_ui.current_video_index &&
+        s_ui.rendered_video_count == count &&
+        s_ui.video_name_text[0] != '\0') {
+        return;
+    }
+
+    const media_library_entry_t *entry = media_library_get_video(s_ui.current_video_index);
+    if (!entry) {
+        return;
+    }
+
+    show_image_or_placeholder(s_ui.video_preview_image,
+                              s_ui.video_preview_placeholder_icon,
+                              entry->has_preview ? entry->preview_lvgl_path : NULL,
+                              LV_SYMBOL_VIDEO);
+
+    set_label_text_if_changed(s_ui.video_name_label,
+                              s_ui.video_name_text,
+                              sizeof(s_ui.video_name_text),
+                              entry->name);
+
+    set_label_text_if_changed(s_ui.video_status_label,
+                              s_ui.video_status_text,
+                              sizeof(s_ui.video_status_text),
+                              entry->has_preview ?
+                              "已切换到该视频的预览图，点击右侧其他缩略图可快速切换。" :
+                              "已选中该视频，但当前未找到同名封面图。");
+    s_ui.rendered_video_index = s_ui.current_video_index;
+    s_ui.rendered_video_count = count;
+}
+
+static void update_video_card_selection(void)
+{
+    if (s_ui.rendered_video_selection_index == s_ui.current_video_index &&
+        s_ui.rendered_video_selection_count == s_ui.video_card_count) {
+        return;
+    }
+
+    for (int i = 0; i < s_ui.video_card_count; i++) {
+        bool selected = s_ui.current_video_index == i;
+        lv_obj_set_style_bg_color(s_ui.video_card_btn[i],
+                                  selected ? lv_color_hex(0x21415F) : lv_color_hex(0x132334),
+                                  0);
+        lv_obj_set_style_border_color(s_ui.video_card_btn[i],
+                                      selected ? lv_color_hex(0x68C1FF) : lv_color_hex(0x25435C),
+                                      0);
+    }
+
+    s_ui.rendered_video_selection_index = s_ui.current_video_index;
+    s_ui.rendered_video_selection_count = s_ui.video_card_count;
+}
+
 static void update_all_ui_text(void)
 {
     update_status_text();
     update_clock_text();
     update_weather_text();
+    update_photo_view();
+    update_music_list_selection();
+    update_video_preview();
+    update_video_card_selection();
+    update_page_indicator();
 }
 
 static void refresh_runtime_fonts(void)
 {
     const lv_font_t *font = ui_font_manager_get_font_16();
 
-    if (s_ui.status_label) {
-        lv_obj_set_style_text_font(s_ui.status_label, font, 0);
+    if (s_ui.status_label) lv_obj_set_style_text_font(s_ui.status_label, font, 0);
+    if (s_ui.date_label) lv_obj_set_style_text_font(s_ui.date_label, font, 0);
+    if (s_ui.calendar_title_label) lv_obj_set_style_text_font(s_ui.calendar_title_label, font, 0);
+    if (s_ui.page_name_label) lv_obj_set_style_text_font(s_ui.page_name_label, font, 0);
+    if (s_ui.weather_title) lv_obj_set_style_text_font(s_ui.weather_title, font, 0);
+    if (s_ui.weather_cond) lv_obj_set_style_text_font(s_ui.weather_cond, font, 0);
+    if (s_ui.detail_humidity) lv_obj_set_style_text_font(s_ui.detail_humidity, font, 0);
+    if (s_ui.detail_feels) lv_obj_set_style_text_font(s_ui.detail_feels, font, 0);
+    if (s_ui.detail_wind) lv_obj_set_style_text_font(s_ui.detail_wind, font, 0);
+    if (s_ui.detail_vis) lv_obj_set_style_text_font(s_ui.detail_vis, font, 0);
+    if (s_ui.photo_name_label) lv_obj_set_style_text_font(s_ui.photo_name_label, font, 0);
+    if (s_ui.photo_meta_label) lv_obj_set_style_text_font(s_ui.photo_meta_label, font, 0);
+    if (s_ui.photo_status_label) lv_obj_set_style_text_font(s_ui.photo_status_label, font, 0);
+    if (s_ui.video_name_label) lv_obj_set_style_text_font(s_ui.video_name_label, font, 0);
+    if (s_ui.video_status_label) lv_obj_set_style_text_font(s_ui.video_status_label, font, 0);
+    for (int i = 0; i < UI_CALENDAR_COLS; i++) {
+        if (s_ui.calendar_weekday_labels[i]) {
+            lv_obj_set_style_text_font(s_ui.calendar_weekday_labels[i], font, 0);
+        }
     }
-    if (s_ui.date_label) {
-        lv_obj_set_style_text_font(s_ui.date_label, font, 0);
-    }
-    if (s_ui.weather_title) {
-        lv_obj_set_style_text_font(s_ui.weather_title, font, 0);
-    }
-    if (s_ui.weather_cond) {
-        lv_obj_set_style_text_font(s_ui.weather_cond, font, 0);
-    }
-    if (s_ui.detail_humidity) {
-        lv_obj_set_style_text_font(s_ui.detail_humidity, font, 0);
-    }
-    if (s_ui.detail_feels) {
-        lv_obj_set_style_text_font(s_ui.detail_feels, font, 0);
-    }
-    if (s_ui.detail_wind) {
-        lv_obj_set_style_text_font(s_ui.detail_wind, font, 0);
-    }
-    if (s_ui.detail_vis) {
-        lv_obj_set_style_text_font(s_ui.detail_vis, font, 0);
+    for (int i = 0; i < UI_CALENDAR_CELL_COUNT; i++) {
+        if (s_ui.calendar_day_labels[i]) {
+            lv_obj_set_style_text_font(s_ui.calendar_day_labels[i], font, 0);
+        }
     }
     for (int i = 0; i < 3; i++) {
-        if (s_ui.forecast_date[i]) {
-            lv_obj_set_style_text_font(s_ui.forecast_date[i], font, 0);
-        }
-        if (s_ui.forecast_cond[i]) {
-            lv_obj_set_style_text_font(s_ui.forecast_cond[i], font, 0);
-        }
+        if (s_ui.forecast_date[i]) lv_obj_set_style_text_font(s_ui.forecast_date[i], font, 0);
+        if (s_ui.forecast_cond[i]) lv_obj_set_style_text_font(s_ui.forecast_cond[i], font, 0);
+    }
+    for (int i = 0; i < s_ui.music_item_count; i++) {
+        if (s_ui.music_item_index_label[i]) lv_obj_set_style_text_font(s_ui.music_item_index_label[i], font, 0);
+        if (s_ui.music_item_title_label[i]) lv_obj_set_style_text_font(s_ui.music_item_title_label[i], font, 0);
+    }
+    for (int i = 0; i < s_ui.video_card_count; i++) {
+        if (s_ui.video_card_title[i]) lv_obj_set_style_text_font(s_ui.video_card_title[i], font, 0);
     }
 
     ui_music_player_refresh_fonts();
@@ -1187,6 +1986,23 @@ static void process_ui_msg(const ui_msg_t *msg)
     }
 }
 
+static void initialize_sd_media_ui(void)
+{
+    if (s_ui.sd_media_loaded || !audio_player_is_sd_mounted()) {
+        return;
+    }
+
+    media_library_refresh();
+    rebuild_music_list();
+    rebuild_video_list();
+    update_photo_view();
+    update_video_preview();
+    update_video_card_selection();
+    s_ui.sd_media_loaded = true;
+
+    ESP_LOGI(TAG_UI, "SD card media UI ready");
+}
+
 esp_err_t ui_renderer_init(void)
 {
     esp_lcd_panel_handle_t panel = lcd_driver_get_panel();
@@ -1209,10 +2025,8 @@ esp_err_t ui_renderer_init(void)
         render_mode = LV_DISPLAY_RENDER_MODE_DIRECT;
     }
 
-    ESP_LOGI(TAG_UI, "ui_renderer_init: lv_init");
     lv_init();
 
-    ESP_LOGI(TAG_UI, "ui_renderer_init: display create");
     s_display = lv_display_create(LCD_H_RES, LCD_V_RES);
     lv_display_set_user_data(s_display, panel);
     lv_display_set_color_format(s_display, LV_COLOR_FORMAT_RGB565);
@@ -1233,25 +2047,28 @@ esp_err_t ui_renderer_init(void)
     ESP_ERROR_CHECK(esp_timer_start_periodic(s_lvgl_tick_timer, LVGL_TICK_PERIOD_MS * 1000));
 
     ui_init_touch_input();
-
-    ESP_LOGI(TAG_UI, "ui_renderer_init: create ui");
     create_ui();
+
     if (battery_monitor_init() != ESP_OK) {
         ESP_LOGW(TAG_UI, "Battery monitor init skipped, status bar will show '--'");
     }
+
     capture_current_wifi_state(&s_latest_wifi);
     weather_client_get_data(&s_latest_weather);
     s_latest_weather_state = s_latest_weather.valid ? APP_WEATHER_STATE_UPDATED : APP_WEATHER_STATE_WAITING;
     s_time_ready = ntp_client_has_valid_time() || ntp_client_is_synced();
-    ESP_LOGI(TAG_UI, "ui_renderer_init: populate text");
+    s_ui.rendered_music_track = -2;
+    s_ui.rendered_video_selection_index = -2;
+    s_ui.rendered_video_selection_count = -1;
+    s_ui.rendered_calendar_year = -1;
+    s_ui.rendered_calendar_month = -1;
+    s_ui.rendered_calendar_day = -1;
+    s_ui.calendar_rendered_valid = false;
+    s_ui.status_colors_valid = false;
+
     update_all_ui_text();
     lv_obj_invalidate(lv_screen_active());
-    ESP_LOGI(TAG_UI, "ui_renderer_init: first lv_timer_handler");
     (void)lv_timer_handler();
-
-    ESP_LOGI(TAG_UI, "LVGL UI initialized panel=%p fb0=%p fb1=%p size=%u mode=%s",
-             panel, fb0, fb1, (unsigned)fb_size,
-             render_mode == LV_DISPLAY_RENDER_MODE_DIRECT ? "direct" : "partial");
 
     s_ui_ready = true;
     app_ui_event_t event = {
@@ -1270,6 +2087,7 @@ void ui_renderer_task(void *arg)
     int64_t last_status_update_us = 0;
     int64_t last_clock_update_us = 0;
     int64_t last_music_update_us = 0;
+    int64_t last_photo_rotate_us = 0;
     ui_msg_t msg = {0};
 
     LV_UNUSED(arg);
@@ -1308,6 +2126,8 @@ void ui_renderer_task(void *arg)
             process_ui_msg(&msg);
         }
 
+        initialize_sd_media_ui();
+
         if (last_status_update_us == 0 || now_us - last_status_update_us >= (int64_t)UI_STATUS_UPDATE_MS * 1000) {
             capture_current_wifi_state(&s_latest_wifi);
             update_status_text();
@@ -1321,10 +2141,20 @@ void ui_renderer_task(void *arg)
 
         if (last_music_update_us == 0 || now_us - last_music_update_us >= (int64_t)UI_MUSIC_UPDATE_MS * 1000) {
             ui_music_player_update();
+            update_music_list_selection();
             last_music_update_us = now_us;
         }
 
+        if (s_ui.active_page == UI_PAGE_PHOTO &&
+            media_library_get_photo_count() > 1 &&
+            (last_photo_rotate_us == 0 || now_us - last_photo_rotate_us >= (int64_t)UI_PHOTO_ROTATE_MS * 1000)) {
+            s_ui.current_photo_index = (s_ui.current_photo_index + 1) % media_library_get_photo_count();
+            update_photo_view();
+            last_photo_rotate_us = now_us;
+        }
+
         delay_ms = lv_timer_handler();
+        process_pending_swipe();
         if (delay_ms < UI_MIN_DELAY_MS) {
             delay_ms = UI_MIN_DELAY_MS;
         } else if (delay_ms > UI_MAX_DELAY_MS) {

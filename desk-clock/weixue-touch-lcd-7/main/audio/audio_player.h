@@ -60,6 +60,13 @@ esp_err_t audio_player_scan_files(void);
 esp_err_t audio_player_play(void);
 
 /**
+ * @brief Play track by playlist index
+ * @param index Zero-based playlist index
+ * @return ESP_OK on success
+ */
+esp_err_t audio_player_play_index(int index);
+
+/**
  * @brief Pause playback
  * @return ESP_OK on success
  */
@@ -96,6 +103,20 @@ esp_err_t audio_player_set_volume(uint8_t volume);
  * @return ESP_OK on success
  */
 esp_err_t audio_player_get_status(audio_player_status_t *status);
+
+/**
+ * @brief Get total track count in current playlist
+ * @return Track count
+ */
+int audio_player_get_track_count(void);
+
+/**
+ * @brief Get track metadata by playlist index
+ * @param index Zero-based playlist index
+ * @param info Destination buffer
+ * @return ESP_OK on success
+ */
+esp_err_t audio_player_get_track_info(int index, audio_track_info_t *info);
 
 /**
  * @brief Check if SD card is mounted

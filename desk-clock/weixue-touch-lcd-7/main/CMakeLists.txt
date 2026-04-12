@@ -15,6 +15,7 @@ idf_component_register(
         "ui/ui_music_player.c"
         "touch/touch_gt911.c"
         "storage/config_store.c"
+        "storage/media_library.c"
         "web/web_dashboard.c"
         "audio/audio_player.c"
     INCLUDE_DIRS

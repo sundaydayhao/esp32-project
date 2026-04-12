@@ -34,6 +34,50 @@ typedef struct {
 
 static music_ui_t s_music_ui = {0};
 
+static bool point_in_obj(const lv_obj_t *obj, const lv_point_t *point)
+{
+    if (!obj || !point) {
+        return false;
+    }
+
+    lv_area_t area;
+    lv_obj_get_coords((lv_obj_t *)obj, &area);
+    return point->x >= area.x1 && point->x <= area.x2 &&
+           point->y >= area.y1 && point->y <= area.y2;
+}
+
+static void handle_prev_action(void)
+{
+    ESP_LOGI(TAG_AUDIO, "Previous button clicked");
+    audio_player_prev();
+    ui_music_player_update();
+}
+
+static void handle_play_action(void)
+{
+    audio_player_status_t status;
+
+    if (audio_player_get_status(&status) != ESP_OK) {
+        return;
+    }
+
+    if (status.state == AUDIO_STATE_PLAYING) {
+        ESP_LOGI(TAG_AUDIO, "Pause button clicked");
+        audio_player_pause();
+    } else {
+        ESP_LOGI(TAG_AUDIO, "Play button clicked");
+        audio_player_play();
+    }
+    ui_music_player_update();
+}
+
+static void handle_next_action(void)
+{
+    ESP_LOGI(TAG_AUDIO, "Next button clicked");
+    audio_player_next();
+    ui_music_player_update();
+}
+
 static void style_music_panel(lv_obj_t *obj)
 {
     lv_obj_set_style_radius(obj, 24, 0);
@@ -73,9 +117,7 @@ static void btn_prev_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG_AUDIO, "Previous button clicked");
-        audio_player_prev();
-        ui_music_player_update();
+        handle_prev_action();
     }
 }
 
@@ -83,17 +125,7 @@ static void btn_play_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
-        audio_player_status_t status;
-        if (audio_player_get_status(&status) == ESP_OK) {
-            if (status.state == AUDIO_STATE_PLAYING) {
-                ESP_LOGI(TAG_AUDIO, "Pause button clicked");
-                audio_player_pause();
-            } else {
-                ESP_LOGI(TAG_AUDIO, "Play button clicked");
-                audio_player_play();
-            }
-            ui_music_player_update();
-        }
+        handle_play_action();
     }
 }
 
@@ -101,9 +133,7 @@ static void btn_next_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG_AUDIO, "Next button clicked");
-        audio_player_next();
-        ui_music_player_update();
+        handle_next_action();
     }
 }
 
@@ -169,7 +199,7 @@ esp_err_t ui_music_player_create(lv_obj_t *parent,
     lv_obj_set_pos(s_music_ui.track_label, 0, 162);
     style_music_text_label(s_music_ui.track_label, lv_color_hex(0xFFFFFF));
     lv_obj_set_style_text_align(s_music_ui.track_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(s_music_ui.track_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_long_mode(s_music_ui.track_label, LV_LABEL_LONG_DOT);
 
     s_music_ui.time_label = lv_label_create(s_music_ui.panel);
     lv_obj_set_size(s_music_ui.time_label, content_w, LV_SIZE_CONTENT);
@@ -339,7 +369,7 @@ void ui_music_player_refresh_fonts(void)
     }
     if (s_music_ui.track_label) {
         lv_obj_set_style_text_font(s_music_ui.track_label, font, 0);
-        lv_label_set_long_mode(s_music_ui.track_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+        lv_label_set_long_mode(s_music_ui.track_label, LV_LABEL_LONG_DOT);
         lv_label_set_text(s_music_ui.track_label,
                           s_music_ui.track_text[0] ? s_music_ui.track_text : "无音乐文件");
     }
@@ -355,6 +385,30 @@ void ui_music_player_refresh_fonts(void)
             lv_label_set_text(s_music_ui.status_label, s_music_ui.status_text);
         }
     }
+}
+
+bool ui_music_player_handle_touch_release(const lv_point_t *point)
+{
+    if (!point) {
+        return false;
+    }
+
+    if (point_in_obj(s_music_ui.btn_prev, point)) {
+        handle_prev_action();
+        return true;
+    }
+
+    if (point_in_obj(s_music_ui.btn_play, point)) {
+        handle_play_action();
+        return true;
+    }
+
+    if (point_in_obj(s_music_ui.btn_next, point)) {
+        handle_next_action();
+        return true;
+    }
+
+    return false;
 }
 
 lv_obj_t *ui_music_player_get_panel(void)

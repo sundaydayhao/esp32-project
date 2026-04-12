@@ -37,6 +37,7 @@ typedef struct {
     bool swap_xy;
     bool mirror_x;
     bool mirror_y;
+    bool direct_coord_mode;
     bool last_pressed;
     uint16_t last_raw_x;
     uint16_t last_raw_y;
@@ -75,6 +76,63 @@ static esp_err_t gt911_write_u8(uint8_t addr, uint16_t reg, uint8_t value)
     };
 
     return waveshare_board_i2c_write(addr, buf, sizeof(buf));
+}
+
+static uint16_t read_u16_be(const uint8_t *buf)
+{
+    return (uint16_t)(((uint16_t)buf[0] << 8) | buf[1]);
+}
+
+static uint16_t read_u16_le(const uint8_t *buf)
+{
+    return (uint16_t)(buf[0] | ((uint16_t)buf[1] << 8));
+}
+
+static uint16_t choose_config_axis_max(const uint8_t *buf, uint16_t lcd_res)
+{
+    uint16_t le = read_u16_le(buf);
+    uint16_t be = read_u16_be(buf);
+    uint32_t le_diff;
+    uint32_t be_diff;
+
+    if (le == 0U && be == 0U) {
+        return (uint16_t)(lcd_res - 1U);
+    }
+
+    if (le != 0U && le <= (uint16_t)(lcd_res * 4U) &&
+        (be == 0U || be > (uint16_t)(lcd_res * 4U))) {
+        return le;
+    }
+
+    if (be != 0U && be <= (uint16_t)(lcd_res * 4U) &&
+        (le == 0U || le > (uint16_t)(lcd_res * 4U))) {
+        return be;
+    }
+
+    le_diff = (le > lcd_res) ? (uint32_t)(le - lcd_res) : (uint32_t)(lcd_res - le);
+    be_diff = (be > lcd_res) ? (uint32_t)(be - lcd_res) : (uint32_t)(lcd_res - be);
+
+    return le_diff <= be_diff ? le : be;
+}
+
+static uint16_t scale_axis_to_lcd(uint16_t value, uint16_t raw_max, uint16_t lcd_res)
+{
+    if (lcd_res <= 1U) {
+        return 0;
+    }
+
+    if (raw_max == 0U || raw_max == lcd_res || raw_max == (lcd_res - 1U)) {
+        if (value >= lcd_res) {
+            return (uint16_t)(lcd_res - 1U);
+        }
+        return value;
+    }
+
+    uint32_t scaled = ((uint32_t)value * (uint32_t)(lcd_res - 1U) + (raw_max / 2U)) / raw_max;
+    if (scaled >= lcd_res) {
+        scaled = lcd_res - 1U;
+    }
+    return (uint16_t)scaled;
 }
 
 static esp_err_t gt911_reset_sequence(void)
@@ -140,8 +198,8 @@ static esp_err_t gt911_read_config_info(uint8_t addr)
     }
 
     s_touch.config_version = cfg[0];
-    s_touch.raw_max_x = (uint16_t)(cfg[1] | (cfg[2] << 8));
-    s_touch.raw_max_y = (uint16_t)(cfg[3] | (cfg[4] << 8));
+    s_touch.raw_max_x = choose_config_axis_max(&cfg[1], LCD_H_RES);
+    s_touch.raw_max_y = choose_config_axis_max(&cfg[3], LCD_V_RES);
 
     if (s_touch.raw_max_x == 0) {
         s_touch.raw_max_x = LCD_H_RES - 1;
@@ -180,18 +238,20 @@ static void touch_apply_orientation(uint16_t *x, uint16_t *y)
 {
     uint16_t tx = *x;
     uint16_t ty = *y;
+    uint16_t max_x = s_touch.raw_max_x;
+    uint16_t max_y = s_touch.raw_max_y;
 
     if (s_touch.mirror_x) {
-        if (tx <= s_touch.raw_max_x) {
-            tx = (uint16_t)(s_touch.raw_max_x - tx);
+        if (tx <= max_x) {
+            tx = (uint16_t)(max_x - tx);
         } else {
             tx = 0;
         }
     }
 
     if (s_touch.mirror_y) {
-        if (ty <= s_touch.raw_max_y) {
-            ty = (uint16_t)(s_touch.raw_max_y - ty);
+        if (ty <= max_y) {
+            ty = (uint16_t)(max_y - ty);
         } else {
             ty = 0;
         }
@@ -201,14 +261,38 @@ static void touch_apply_orientation(uint16_t *x, uint16_t *y)
         uint16_t tmp = tx;
         tx = ty;
         ty = tmp;
+
+        tmp = max_x;
+        max_x = max_y;
+        max_y = tmp;
     }
 
-    if (tx >= LCD_H_RES) {
-        tx = LCD_H_RES - 1;
+    if (!s_touch.direct_coord_mode &&
+        (max_x > (uint16_t)(LCD_H_RES * 4U) || max_y > (uint16_t)(LCD_V_RES * 4U)) &&
+        tx < (uint16_t)(LCD_H_RES * 2U) &&
+        ty < (uint16_t)(LCD_V_RES * 2U)) {
+        s_touch.direct_coord_mode = true;
+        ESP_LOGW(TAG,
+                 "Touch raw points already match LCD pixels, bypass scale raw_max=(%u,%u)",
+                 (unsigned)max_x,
+                 (unsigned)max_y);
     }
-    if (ty >= LCD_V_RES) {
-        ty = LCD_V_RES - 1;
+
+    if (s_touch.direct_coord_mode) {
+        if (tx >= LCD_H_RES) {
+            tx = LCD_H_RES - 1;
+        }
+        if (ty >= LCD_V_RES) {
+            ty = LCD_V_RES - 1;
+        }
+
+        *x = tx;
+        *y = ty;
+        return;
     }
+
+    tx = scale_axis_to_lcd(tx, max_x, LCD_H_RES);
+    ty = scale_axis_to_lcd(ty, max_y, LCD_V_RES);
 
     *x = tx;
     *y = ty;
@@ -297,8 +381,8 @@ esp_err_t touch_gt911_read(uint16_t *x, uint16_t *y, bool *pressed)
 
     ret = gt911_read_reg(s_touch.addr, GT911_REG_POINT1, point_data, sizeof(point_data));
     if (ret == ESP_OK) {
-        raw_x = (uint16_t)(point_data[1] | (point_data[2] << 8));
-        raw_y = (uint16_t)(point_data[3] | (point_data[4] << 8));
+        raw_x = read_u16_be(&point_data[1]);
+        raw_y = read_u16_be(&point_data[3]);
         *x = raw_x;
         *y = raw_y;
         touch_apply_orientation(x, y);

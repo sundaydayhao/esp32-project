@@ -31,6 +31,7 @@ esp_err_t ui_music_player_create(lv_obj_t *parent,
  */
 void ui_music_player_update(void);
 void ui_music_player_refresh_fonts(void);
+bool ui_music_player_handle_touch_release(const lv_point_t *point);
 
 /**
  * @brief Get the music player panel object
