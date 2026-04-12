@@ -1,13 +1,13 @@
-# ESP32-CAM Gas Meter Camera Push
+# ESP32-CAM Gas Meter Email Notifier
 
-基于 `ESP-IDF v5.5.3` 的 `ESP32-CAM` 定时拍照推送项目。
+基于 `ESP-IDF v5.5.3` 的 `ESP32-CAM` 定时拍照邮件通知项目。
 
 设备启动后会：
 
 - 连接配置好的 Wi-Fi 热点
 - 初始化摄像头
 - 按设定时间间隔拍照
-- 通过企业微信 Webhook 或 ServerChan 推送通知
+- 通过 SMTP 邮件把图片作为附件发送到指定邮箱
 
 ## 支持范围
 
@@ -20,7 +20,8 @@
 - ESP-IDF `v5.5.3`
 - 一块带摄像头和 PSRAM 的 `ESP32-CAM`
 - 可用的 2.4 GHz Wi-Fi 热点
-- 企业微信机器人 Webhook 或 ServerChan SendKey
+- 可用的 SMTP 发件邮箱
+- 发件邮箱的 SMTP 授权码或应用专用密码
 
 ## 配置方法
 
@@ -36,22 +37,27 @@ idf.py menuconfig
 
 - `WiFi SSID`
 - `WiFi password`
-- `WiFi max retry count`
-- `WeChat push method`
-- `WeCom webhook key`
-- `ServerChan SendKey`
+- `SMTP server`
+- `SMTP port`
+- `Use STARTTLS`
+- `SMTP sender email`
+- `SMTP sender auth code / app password`
+- `SMTP recipient email`
 - `Capture interval (minutes)`
 - `Camera frame size`
 - `JPEG quality`
 - `Camera board profile`
 - `Camera pin configuration`
 
-其中热点名称和密码就在这里设置：
+默认收件人已经改成 `zhanghao163mail@163.com`。如果你准备用同一个 `163` 邮箱发给自己，通常只需要再填写发件邮箱的 SMTP 授权码。
 
-- `WiFi SSID`
-- `WiFi password`
+当前默认 SMTP 参数假设使用 `163` 邮箱：
 
-这些配置项定义在 [Kconfig.projbuild](/D:/workspace/esp32-chaobiao/main/Kconfig.projbuild)。
+- `SMTP server`: `smtp.163.com`
+- `SMTP port`: `465`
+- `Use STARTTLS`: `No`
+
+如果你用的是其他邮箱服务商，请按它们的 SMTP 参数改掉这三项。
 
 ## 构建
 
@@ -75,16 +81,11 @@ idf.py -p COM3 flash monitor
 
 把 `COM3` 改成你自己的串口号。
 
-## 推送方式
+## 邮件通知行为
 
-项目支持两种推送方式：
-
-- `WeCom webhook`
-  适合把图片直接发到企业微信群机器人
-- `ServerChan`
-  适合发送文本通知到个人微信
-
-默认使用 `WeCom webhook`。
+- 正常拍照时，会发送一封带 JPEG 附件的邮件
+- 启动完成后，会先发送一封纯文本启动通知
+- 摄像头初始化失败、拍照失败、邮件发送失败时，也会发送纯文本告警
 
 ## 摄像头默认引脚
 
@@ -116,8 +117,9 @@ idf.py -p COM3 flash monitor
 - 再初始化摄像头
 - 成功后创建周期任务
 - 每次拍照前会检查 Wi-Fi 是否仍然在线
+- 每次拍照成功后会尝试发送带附件的邮件
 
-主流程在 [main.c](/D:/workspace/esp32-chaobiao/main/main.c)，Wi-Fi 连接逻辑在 [wifi_connect.c](/D:/workspace/esp32-chaobiao/main/wifi_connect.c)。
+主流程在 `main/main.c`，Wi-Fi 连接逻辑在 `main/wifi_connect.c`，邮件发送逻辑在 `main/email_sender.c`。
 
 ## 常见问题
 
@@ -137,12 +139,16 @@ idf.py -p COM3 flash monitor
 - 引脚配置是否匹配你的模块
 - 供电是否稳定
 
-### 3. 图片太大发送失败
+### 3. 邮件发送失败
 
-可以降低：
+优先检查：
 
-- `Camera frame size`
-- `JPEG quality`
+- `SMTP server`
+- `SMTP port`
+- `Use STARTTLS`
+- `SMTP sender email`
+- `SMTP sender auth code / app password`
+- Wi-Fi 是否可正常联网
 
 ### 4. Wi-Fi 连不上
 

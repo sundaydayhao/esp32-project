@@ -1,14 +1,16 @@
 #include "camera_init.h"
+#include "email_sender.h"
 #include "sdkconfig.h"
-#include "wechat_sender.h"
 #include "wifi_connect.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 static const char *TAG = "chaobiao_main";
+static int64_t s_system_start_time_us = 0;
 
 #if CONFIG_CAPTURE_INTERVAL_DEBUG_SECONDS > 0
 #define CAPTURE_INTERVAL_MS    (CONFIG_CAPTURE_INTERVAL_DEBUG_SECONDS * 1000ULL)
@@ -21,6 +23,25 @@ static const char *TAG = "chaobiao_main";
 #endif
 
 #define STARTUP_DELAY_MS     3000
+
+static void wait_until_second_capture_target(void)
+{
+    const int64_t elapsed_ms = (esp_timer_get_time() - s_system_start_time_us) / 1000;
+
+    if (elapsed_ms >= (int64_t)CAPTURE_INTERVAL_MS) {
+        ESP_LOGI(TAG,
+                 "Second capture target already reached: elapsed=%lld ms target=%llu ms",
+                 (long long)elapsed_ms,
+                 (unsigned long long)CAPTURE_INTERVAL_MS);
+        return;
+    }
+
+    const int64_t remaining_ms = (int64_t)CAPTURE_INTERVAL_MS - elapsed_ms;
+    ESP_LOGI(TAG,
+             "Waiting %lld ms until the second capture target after startup",
+             (long long)remaining_ms);
+    vTaskDelay(pdMS_TO_TICKS((uint32_t)remaining_ms));
+}
 
 static void do_capture_and_send(void)
 {
@@ -40,31 +61,25 @@ static void do_capture_and_send(void)
     camera_fb_t *fb = camera_capture();
     if (fb == NULL) {
         ESP_LOGE(TAG, "Camera capture failed");
-        wechat_send_text("Camera capture failed. Check the ESP32-CAM camera connection.");
+        email_send_text("Camera capture failed. Check the ESP32-CAM camera connection.");
         return;
     }
 
     ESP_LOGI(TAG, "Capture complete: %zu bytes", fb->len);
-    ESP_LOGI(TAG, "Uploading image to WeChat");
+    ESP_LOGI(TAG, "Sending capture email");
 
-    esp_err_t send_ret = wechat_send_camera_frame(fb);
+    esp_err_t send_ret = email_send_camera_frame(fb);
 
     if (send_ret == ESP_OK) {
-        ESP_LOGI(TAG, "Image upload succeeded");
+        ESP_LOGI(TAG, "Capture email sent successfully");
+    } else if (send_ret == ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "Capture email skipped because SMTP configuration is incomplete");
     } else if (send_ret == ESP_ERR_INVALID_RESPONSE) {
-        ESP_LOGE(TAG, "Captured image is invalid and could not be uploaded");
-        wechat_send_text("Captured image is invalid. Check camera wiring, IO0/XCLK, and power.");
-    } else if (send_ret == ESP_ERR_INVALID_SIZE) {
-        char msg[128];
-
-        ESP_LOGW(TAG, "Image is too large for the current upload path");
-        snprintf(msg, sizeof(msg),
-                 "Upload image too large after normalization. Captured JPEG: %zu KB.",
-                 fb->len / 1024);
-        wechat_send_text(msg);
+        ESP_LOGE(TAG, "Captured image is invalid and could not be converted to email attachment");
+        email_send_text("Captured image is invalid. Check camera wiring, IO0/XCLK, and power.");
     } else {
-        ESP_LOGE(TAG, "Image upload failed: %s", esp_err_to_name(send_ret));
-        wechat_send_text("Image upload failed. Check WiFi and webhook configuration.");
+        ESP_LOGE(TAG, "Capture email failed: %s", esp_err_to_name(send_ret));
+        email_send_text("Image email failed. Check WiFi and SMTP configuration.");
     }
 
     esp_camera_fb_return(fb);
@@ -81,19 +96,24 @@ static void chaobiao_task(void *pvParameters)
              STARTUP_DELAY_MS / 1000);
     vTaskDelay(pdMS_TO_TICKS(STARTUP_DELAY_MS));
 
-    wechat_send_text("ESP32-CAM gas meter monitor started. First capture will be sent shortly.");
+    ESP_LOGI(TAG, "Sending first capture email after startup");
+    do_capture_and_send();
 
-    while (1) {
-        do_capture_and_send();
+    ESP_LOGI(TAG, "Second capture target is %d %s after startup",
+             CAPTURE_INTERVAL_VALUE, CAPTURE_INTERVAL_UNIT);
+    wait_until_second_capture_target();
 
-        ESP_LOGI(TAG, "Waiting %d %s for the next capture",
-                 CAPTURE_INTERVAL_VALUE, CAPTURE_INTERVAL_UNIT);
-        vTaskDelay(pdMS_TO_TICKS(CAPTURE_INTERVAL_MS));
-    }
+    ESP_LOGI(TAG, "Sending second and final capture email");
+    do_capture_and_send();
+
+    ESP_LOGI(TAG, "Final capture complete, no more emails will be sent");
+    vTaskDelete(NULL);
 }
 
 void app_main(void)
 {
+    s_system_start_time_us = esp_timer_get_time();
+
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ESP32-CAM Gas Meter Camera Push");
     ESP_LOGI(TAG, "  Version: 1.0.0");
@@ -120,7 +140,7 @@ void app_main(void)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Camera init failed: %s (0x%x)", esp_err_to_name(ret), ret);
         if (wifi_is_connected()) {
-            wechat_send_text("ESP32-CAM camera init failed. Check wiring and camera module.");
+            email_send_text("ESP32-CAM camera init failed. Check wiring and camera module.");
         }
 
         while (1) {
@@ -132,15 +152,13 @@ void app_main(void)
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "Configuration:");
     ESP_LOGI(TAG, "  WiFi SSID: %s", CONFIG_WIFI_SSID);
-    ESP_LOGI(TAG, "  Capture interval: %d %s",
+    ESP_LOGI(TAG, "  Second capture target after startup: %d %s",
              CAPTURE_INTERVAL_VALUE, CAPTURE_INTERVAL_UNIT);
     ESP_LOGI(TAG, "  Frame size: %d", CONFIG_CAMERA_FRAME_SIZE);
     ESP_LOGI(TAG, "  JPEG quality: %d", CONFIG_CAMERA_JPEG_QUALITY);
-#ifdef CONFIG_WECHAT_PUSH_WECOM
-    ESP_LOGI(TAG, "  Push method: WeCom webhook");
-#elif defined(CONFIG_WECHAT_PUSH_SERVERCHAN)
-    ESP_LOGI(TAG, "  Push method: ServerChan");
-#endif
+    ESP_LOGI(TAG, "  Notify method: SMTP email");
+    ESP_LOGI(TAG, "  SMTP server: %s:%s", CONFIG_SMTP_SERVER, CONFIG_SMTP_PORT);
+    ESP_LOGI(TAG, "  Recipient: %s", CONFIG_SMTP_RECIPIENT_EMAIL);
     ESP_LOGI(TAG, "========================================");
 
     xTaskCreate(

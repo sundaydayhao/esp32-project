@@ -3,7 +3,7 @@ idf_component_register(
         "main.c"
         "camera_init.c"
         "wifi_connect.c"
-        "wechat_sender.c"
+        "email_sender.c"
     INCLUDE_DIRS
         "."
     REQUIRES

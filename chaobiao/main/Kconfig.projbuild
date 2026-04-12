@@ -19,51 +19,57 @@ menu "Gas Meter Camera Push Configuration"
         help
             Maximum reconnection attempts before reporting a failure.
 
-    choice WECHAT_PUSH_METHOD
-        prompt "WeChat push method"
-        default WECHAT_PUSH_WECOM
+    config SMTP_SERVER
+        string "SMTP server"
+        default "smtp.163.com"
         help
-            Select how notifications are sent to WeChat.
+            SMTP server hostname. The default assumes a NetEase 163 sender mailbox.
 
-        config WECHAT_PUSH_WECOM
-            bool "WeCom webhook"
-            help
-                Use a WeCom group robot webhook to send images.
+    config SMTP_PORT
+        string "SMTP port"
+        default "465"
+        help
+            SMTP port number. Use 465 for implicit TLS or 587 with STARTTLS enabled.
 
-        config WECHAT_PUSH_SERVERCHAN
-            bool "ServerChan"
-            help
-                Use ServerChan to send text notifications to personal WeChat.
-    endchoice
+    config SMTP_USE_STARTTLS
+        bool "Use STARTTLS"
+        default n
+        help
+            Enable this if your SMTP provider expects a plain connection first,
+            then upgrades to TLS with STARTTLS, which is common on port 587.
 
-    config WECOM_WEBHOOK_KEY
-        string "WeCom webhook key"
+    config SMTP_SENDER_EMAIL
+        string "SMTP sender email"
+        default "zhanghao163mail@163.com"
+        help
+            The mailbox used to send email notifications.
+
+    config SMTP_SENDER_AUTH_CODE
+        string "SMTP sender auth code / app password"
         default ""
-        depends on WECHAT_PUSH_WECOM
         help
-            The key portion of the WeCom webhook URL.
+            SMTP authorization code or app password for the sender mailbox.
 
-    config SERVERCHAN_SENDKEY
-        string "ServerChan SendKey"
-        default ""
-        depends on WECHAT_PUSH_SERVERCHAN
+    config SMTP_RECIPIENT_EMAIL
+        string "SMTP recipient email"
+        default "zhanghao163mail@163.com"
         help
-            SendKey used by ServerChan.
+            Recipient address for email notifications.
 
     config CAPTURE_INTERVAL_MINUTES
-        int "Capture interval (minutes)"
-        default 60
+        int "Second capture target after startup (minutes)"
+        default 1
         range 1 1440
         help
-            Period between captures and notification uploads.
+            Target time for the second and final capture, measured from device startup.
 
     config CAPTURE_INTERVAL_DEBUG_SECONDS
-        int "Debug capture interval override (seconds, 0 disables)"
-        default 0
+        int "Second capture target override (seconds, 0 disables)"
+        default 30
         range 0 3600
         help
-            Overrides the normal capture interval during debugging. Set to 0
-            to keep using the minute-based interval above.
+            Overrides the normal second-capture target during debugging. Set to
+            0 to keep using the minute-based value above.
 
     config CAMERA_FRAME_SIZE
         int "Camera frame size"

@@ -15,19 +15,18 @@ static const int CAMERA_XCLK_FREQ_HZ_FALLBACK = 10000000;
 static const int CAMERA_SENSOR_STABILIZE_DELAY_MS = 1500;
 static const int CAMERA_CAPTURE_RETRY_DELAY_MS = 2000;
 static const int CAMERA_SENSOR_RESET_DELAY_MS = 1000;
-static const int CAMERA_WARMUP_FRAME_COUNT = 2;
+static const int CAMERA_WARMUP_FRAME_COUNT = 3;
+static const int CAMERA_FIRST_CAPTURE_WARMUP_FRAME_COUNT = 8;
 static const int CAMERA_WARMUP_FRAME_DELAY_MS = 120;
+static const int CAMERA_FIRST_CAPTURE_EXTRA_SETTLE_MS = 1200;
 
 static bool s_camera_initialized = false;
 static int s_camera_recovery_stage = 0;
+static bool s_first_capture_pending = true;
 
 enum {
     CAMERA_RECOVERY_STAGE_PRIMARY = 0,
-    CAMERA_RECOVERY_STAGE_LOW_XCLK = 1,
-    CAMERA_RECOVERY_STAGE_CONSERVATIVE = 2,
-    CAMERA_RECOVERY_STAGE_RGB565_FALLBACK = 3,
-    CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK = 4,
-    CAMERA_RECOVERY_STAGE_MAX = CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK,
+    CAMERA_RECOVERY_STAGE_MAX = CAMERA_RECOVERY_STAGE_PRIMARY,
 };
 
 static framesize_t camera_translate_legacy_frame_size(int config_value)
@@ -92,15 +91,7 @@ static const char *camera_profile_name(int recovery_stage)
 {
     switch (recovery_stage) {
         case CAMERA_RECOVERY_STAGE_PRIMARY:
-            return "primary";
-        case CAMERA_RECOVERY_STAGE_LOW_XCLK:
-            return "low-xclk";
-        case CAMERA_RECOVERY_STAGE_CONSERVATIVE:
-            return "conservative";
-        case CAMERA_RECOVERY_STAGE_RGB565_FALLBACK:
-            return "rgb565-fallback";
-        case CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK:
-            return "grayscale-fallback";
+            return "jpeg-original";
         default:
             return "unknown";
     }
@@ -110,37 +101,8 @@ static framesize_t camera_select_profile_frame_size(framesize_t configured,
                                                     bool has_psram,
                                                     int recovery_stage)
 {
-    if (recovery_stage == CAMERA_RECOVERY_STAGE_RGB565_FALLBACK) {
-        if (has_psram) {
-            return FRAMESIZE_VGA;
-        }
-        if (configured > FRAMESIZE_CIF) {
-            return FRAMESIZE_CIF;
-        }
-    }
-
-    if (recovery_stage == CAMERA_RECOVERY_STAGE_CONSERVATIVE) {
-        if (configured > FRAMESIZE_SVGA) {
-            return FRAMESIZE_SVGA;
-        }
-    }
-
-    if (recovery_stage == CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK) {
-        if (configured > FRAMESIZE_QVGA) {
-            return FRAMESIZE_QVGA;
-        }
-    }
-
-    if (recovery_stage == CAMERA_RECOVERY_STAGE_LOW_XCLK &&
-        configured > FRAMESIZE_XGA) {
-        return FRAMESIZE_XGA;
-    }
-
-    if (recovery_stage > CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK &&
-        configured > FRAMESIZE_QVGA) {
-        return FRAMESIZE_QVGA;
-    }
-
+    (void)has_psram;
+    (void)recovery_stage;
     return configured;
 }
 
@@ -158,25 +120,14 @@ static int camera_select_profile_xclk(int recovery_stage, framesize_t frame_size
 
 static int camera_select_profile_jpeg_quality(int recovery_stage)
 {
-    int jpeg_quality = CONFIG_CAMERA_JPEG_QUALITY > 30 ? 30 : CONFIG_CAMERA_JPEG_QUALITY;
-
-    if (recovery_stage >= CAMERA_RECOVERY_STAGE_CONSERVATIVE && jpeg_quality < 18) {
-        return 18;
-    }
-
-    return jpeg_quality;
+    (void)recovery_stage;
+    return CONFIG_CAMERA_JPEG_QUALITY;
 }
 
 static pixformat_t camera_select_profile_pixel_format(int recovery_stage)
 {
-    switch (recovery_stage) {
-        case CAMERA_RECOVERY_STAGE_RGB565_FALLBACK:
-            return PIXFORMAT_RGB565;
-        case CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK:
-            return PIXFORMAT_GRAYSCALE;
-        default:
-            return PIXFORMAT_JPEG;
-    }
+    (void)recovery_stage;
+    return PIXFORMAT_JPEG;
 }
 
 static camera_config_t camera_build_config(int recovery_stage)
@@ -247,16 +198,8 @@ static void camera_tune_sensor(sensor_t *sensor)
         sensor->set_dcw(sensor, 1);
         sensor->set_colorbar(sensor, 0);
 
-        if (s_camera_recovery_stage == CAMERA_RECOVERY_STAGE_RGB565_FALLBACK) {
-            sensor->set_contrast(sensor, 1);
-            sensor->set_saturation(sensor, 1);
-        } else if (s_camera_recovery_stage == CAMERA_RECOVERY_STAGE_GRAYSCALE_FALLBACK) {
-            sensor->set_contrast(sensor, 1);
-            sensor->set_saturation(sensor, 0);
-        } else {
-            sensor->set_contrast(sensor, 0);
-            sensor->set_saturation(sensor, 0);
-        }
+        sensor->set_contrast(sensor, 0);
+        sensor->set_saturation(sensor, 0);
 
         sensor->set_sharpness(sensor, 0);
     }
@@ -279,16 +222,16 @@ static void camera_restore_sensor_profile(sensor_t *sensor)
     camera_tune_sensor(sensor);
 }
 
-static void camera_warmup_pipeline(void)
+static void camera_warmup_pipeline(int frame_count, int delay_ms)
 {
-    for (int i = 0; i < CAMERA_WARMUP_FRAME_COUNT; i++) {
+    for (int i = 0; i < frame_count; i++) {
         camera_fb_t *fb = esp_camera_fb_get();
         if (fb == NULL) {
-            ESP_LOGW(TAG, "Warmup frame %d/%d unavailable", i + 1, CAMERA_WARMUP_FRAME_COUNT);
+            ESP_LOGW(TAG, "Warmup frame %d/%d unavailable", i + 1, frame_count);
         } else {
             esp_camera_fb_return(fb);
         }
-        vTaskDelay(pdMS_TO_TICKS(CAMERA_WARMUP_FRAME_DELAY_MS));
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }
 }
 
@@ -382,9 +325,10 @@ static esp_err_t camera_apply_profile(int recovery_stage)
     camera_tune_sensor(esp_camera_sensor_get());
     s_camera_initialized = true;
     s_camera_recovery_stage = recovery_stage;
+    s_first_capture_pending = true;
 
     vTaskDelay(pdMS_TO_TICKS(CAMERA_SENSOR_STABILIZE_DELAY_MS));
-    camera_warmup_pipeline();
+    camera_warmup_pipeline(CAMERA_WARMUP_FRAME_COUNT, CAMERA_WARMUP_FRAME_DELAY_MS);
     return ESP_OK;
 }
 
@@ -400,34 +344,39 @@ camera_fb_t *camera_capture(void)
         return NULL;
     }
 
+    int warmup_frame_count = CAMERA_WARMUP_FRAME_COUNT;
     ESP_LOGI(TAG, "Capturing image with profile: %s", camera_profile_name(s_camera_recovery_stage));
+    if (s_first_capture_pending) {
+        warmup_frame_count = CAMERA_FIRST_CAPTURE_WARMUP_FRAME_COUNT;
+        ESP_LOGI(TAG,
+                 "First capture after startup: waiting %d ms for AWB/AE settle",
+                 CAMERA_FIRST_CAPTURE_EXTRA_SETTLE_MS);
+        vTaskDelay(pdMS_TO_TICKS(CAMERA_FIRST_CAPTURE_EXTRA_SETTLE_MS));
+    }
+    ESP_LOGI(TAG, "Discarding %d warmup frame(s) before the final capture", warmup_frame_count);
+    camera_warmup_pipeline(warmup_frame_count, CAMERA_WARMUP_FRAME_DELAY_MS);
 
     camera_fb_t *fb = camera_try_capture(5, CAMERA_CAPTURE_RETRY_DELAY_MS);
     if (fb != NULL) {
+        s_first_capture_pending = false;
         return fb;
     }
 
     sensor_t *sensor = esp_camera_sensor_get();
     if (sensor != NULL) {
-        for (int stage = s_camera_recovery_stage; stage <= CAMERA_RECOVERY_STAGE_MAX; stage++) {
-            if (stage == s_camera_recovery_stage) {
-                ESP_LOGW(TAG, "Capture failed, performing in-place sensor reset");
-            } else {
-                ESP_LOGW(TAG, "Capture still failing, switching in-place to profile: %s",
-                         camera_profile_name(stage));
-            }
+        ESP_LOGW(TAG, "Capture failed, resetting sensor and retrying with the original JPEG profile");
 
-            s_camera_recovery_stage = stage;
-            sensor->reset(sensor);
-            vTaskDelay(pdMS_TO_TICKS(CAMERA_SENSOR_RESET_DELAY_MS));
-            camera_restore_sensor_profile(sensor);
-            vTaskDelay(pdMS_TO_TICKS(CAMERA_SENSOR_STABILIZE_DELAY_MS));
-            camera_warmup_pipeline();
+        s_camera_recovery_stage = CAMERA_RECOVERY_STAGE_PRIMARY;
+        sensor->reset(sensor);
+        vTaskDelay(pdMS_TO_TICKS(CAMERA_SENSOR_RESET_DELAY_MS));
+        camera_restore_sensor_profile(sensor);
+        vTaskDelay(pdMS_TO_TICKS(CAMERA_SENSOR_STABILIZE_DELAY_MS));
+        camera_warmup_pipeline(CAMERA_WARMUP_FRAME_COUNT, CAMERA_WARMUP_FRAME_DELAY_MS);
 
-            fb = camera_try_capture(3, CAMERA_CAPTURE_RETRY_DELAY_MS);
-            if (fb != NULL) {
-                return fb;
-            }
+        fb = camera_try_capture(3, CAMERA_CAPTURE_RETRY_DELAY_MS);
+        if (fb != NULL) {
+            s_first_capture_pending = false;
+            return fb;
         }
     }
 
