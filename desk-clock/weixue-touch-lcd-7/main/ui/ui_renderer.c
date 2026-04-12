@@ -22,6 +22,7 @@
 #include "net/weather_client.h"
 #include "net/wifi_manager.h"
 #include "power/battery_monitor.h"
+#include "touch_gt911.h"
 #include "ui/ui_font_manager.h"
 #include "ui/ui_music_player.h"
 
@@ -120,6 +121,8 @@ static uint32_t s_flush_count = 0;
 static volatile TaskHandle_t s_flush_wait_task = NULL;
 static bool s_time_ready = false;
 static bool s_ui_ready = false;
+static lv_indev_t *s_touch_indev = NULL;
+static lv_point_t s_last_touch_point = {0, 0};
 
 static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t storage_size, const char *text)
 {
@@ -409,6 +412,40 @@ static void lvgl_tick_cb(void *arg)
 {
     LV_UNUSED(arg);
     lv_tick_inc(LVGL_TICK_PERIOD_MS);
+}
+
+static void lvgl_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    uint16_t x = 0;
+    uint16_t y = 0;
+    bool pressed = false;
+
+    LV_UNUSED(indev);
+
+    if (touch_gt911_read(&x, &y, &pressed) == ESP_OK && pressed) {
+        s_last_touch_point.x = x;
+        s_last_touch_point.y = y;
+        data->point = s_last_touch_point;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else {
+        data->point = s_last_touch_point;
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
+}
+
+static void ui_init_touch_input(void)
+{
+    esp_err_t ret = touch_gt911_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG_UI, "Touch init failed, continue without touch: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    s_touch_indev = lv_indev_create();
+    lv_indev_set_type(s_touch_indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(s_touch_indev, lvgl_touch_read_cb);
+    lv_indev_set_display(s_touch_indev, s_display);
+    ESP_LOGI(TAG_UI, "GT911 touch input registered");
 }
 
 static void style_panel(lv_obj_t *obj)
@@ -1194,6 +1231,8 @@ esp_err_t ui_renderer_init(void)
     };
     ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_lvgl_tick_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(s_lvgl_tick_timer, LVGL_TICK_PERIOD_MS * 1000));
+
+    ui_init_touch_input();
 
     ESP_LOGI(TAG_UI, "ui_renderer_init: create ui");
     create_ui();

@@ -52,6 +52,13 @@
 
 #define LCD_NUM_FB                  2
 
+/* GT911 capacitive touch controller */
+#define TOUCH_I2C_ADDR              0x5D
+#define TOUCH_PIN_INT               GPIO_NUM_4
+#define TOUCH_SWAP_XY               0
+#define TOUCH_MIRROR_X              0
+#define TOUCH_MIRROR_Y              0
+
 #define BOOT_MODE_LCD_DIAGNOSTIC    0
 #define BOOT_MODE_UI_ONLY           1
 #define BOOT_MODE_FULL_APP          2
@@ -150,6 +157,25 @@
 #define SD_PIN_CS       GPIO_NUM_NC
 
 /* ================================================================
+ * Audio Output (MAX98357A)
+ * ================================================================ */
+/*
+ * Recommended wiring for Waveshare ESP32-S3-Touch-LCD-7:
+ *   GPIO15 -> BCLK
+ *   GPIO16 -> LRC / WS
+ *   GPIO6  -> DIN
+ *
+ * GPIO6 is exposed on the Sensor AD header on this board, so avoid enabling
+ * the optional battery ADC monitor at the same time as I2S audio output.
+ */
+#define AUDIO_I2S_PIN_BCLK          GPIO_NUM_15
+#define AUDIO_I2S_PIN_LRCK          GPIO_NUM_16
+#define AUDIO_I2S_PIN_DOUT          GPIO_NUM_6
+#define AUDIO_I2S_PIN_MCLK          GPIO_NUM_NC
+#define AUDIO_I2S_SAMPLE_RATE_HZ    44100U
+#define AUDIO_TEST_TONE_FREQ_HZ     440U
+
+/* ================================================================
  * Web provisioning
  * ================================================================ */
 #define WEB_SERVER_PORT         80
@@ -163,7 +189,7 @@
 #define TASK_STACK_NTP          (4  * 1024)
 #define TASK_STACK_FONT         (4  * 1024)
 #define TASK_STACK_APP_EVENT    (4  * 1024)
-#define TASK_STACK_AUDIO        (4  * 1024)
+#define TASK_STACK_AUDIO        (6  * 1024)
 #define TASK_PRIO_LCD_DIAG      3
 #define TASK_PRIO_UI            7
 #define TASK_PRIO_APP_EVENT     6

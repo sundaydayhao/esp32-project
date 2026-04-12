@@ -4,6 +4,7 @@
 #include "esp_check.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #define WAVESHARE_I2C_PORT      I2C_NUM_0
 #define WAVESHARE_I2C_SDA       GPIO_NUM_8
@@ -24,17 +25,46 @@
 static const char *TAG = "BOARD";
 static bool s_i2c_ready = false;
 static uint16_t s_output_mask = 0;
+static SemaphoreHandle_t s_i2c_mutex = NULL;
 
-static esp_err_t ch422g_write_reg(uint8_t reg, uint8_t value)
+static esp_err_t i2c_lock(void)
+{
+    if (!s_i2c_mutex) {
+        s_i2c_mutex = xSemaphoreCreateMutex();
+        if (!s_i2c_mutex) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    return xSemaphoreTake(s_i2c_mutex, pdMS_TO_TICKS(1000)) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT;
+}
+
+static void i2c_unlock(void)
+{
+    if (s_i2c_mutex) {
+        xSemaphoreGive(s_i2c_mutex);
+    }
+}
+
+static esp_err_t ch422g_write_reg_unlocked(uint8_t reg, uint8_t value)
 {
     return i2c_master_write_to_device(WAVESHARE_I2C_PORT, reg, &value, sizeof(value), pdMS_TO_TICKS(100));
 }
 
 static esp_err_t ch422g_flush_outputs(void)
 {
-    ESP_RETURN_ON_ERROR(ch422g_write_reg(CH422G_REG_OUT_LOWER, (uint8_t)(s_output_mask & 0xFF)), TAG, "write lower failed");
-    ESP_RETURN_ON_ERROR(ch422g_write_reg(CH422G_REG_OUT_UPPER, (uint8_t)(s_output_mask >> 8)), TAG, "write upper failed");
-    return ch422g_write_reg(CH422G_REG_MODE, CH422G_MODE_OUTPUT);
+    ESP_RETURN_ON_ERROR(i2c_lock(), TAG, "i2c lock failed");
+
+    esp_err_t ret = ch422g_write_reg_unlocked(CH422G_REG_OUT_LOWER, (uint8_t)(s_output_mask & 0xFF));
+    if (ret == ESP_OK) {
+        ret = ch422g_write_reg_unlocked(CH422G_REG_OUT_UPPER, (uint8_t)(s_output_mask >> 8));
+    }
+    if (ret == ESP_OK) {
+        ret = ch422g_write_reg_unlocked(CH422G_REG_MODE, CH422G_MODE_OUTPUT);
+    }
+
+    i2c_unlock();
+    return ret;
 }
 
 static esp_err_t set_pin(uint8_t pin, bool high)
@@ -71,6 +101,13 @@ esp_err_t waveshare_board_init(void)
         return ret;
     }
 
+    if (!s_i2c_mutex) {
+        s_i2c_mutex = xSemaphoreCreateMutex();
+        if (!s_i2c_mutex) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
     s_i2c_ready = true;
     ESP_LOGI(TAG, "CH422G control ready on I2C%d SDA=%d SCL=%d", WAVESHARE_I2C_PORT, WAVESHARE_I2C_SDA, WAVESHARE_I2C_SCL);
     return ch422g_flush_outputs();
@@ -90,4 +127,52 @@ esp_err_t waveshare_board_set_sd_card_selected(bool selected)
 {
     ESP_RETURN_ON_ERROR(waveshare_board_init(), TAG, "board init failed");
     return set_pin(WAVESHARE_PIN_SD_CS, !selected);
+}
+
+esp_err_t waveshare_board_set_touch_reset(bool high)
+{
+    ESP_RETURN_ON_ERROR(waveshare_board_init(), TAG, "board init failed");
+    return set_pin(WAVESHARE_PIN_TP_RST, high);
+}
+
+esp_err_t waveshare_board_i2c_write(uint8_t device_addr, const uint8_t *data, size_t data_len)
+{
+    if (!data || data_len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ESP_RETURN_ON_ERROR(waveshare_board_init(), TAG, "board init failed");
+    ESP_RETURN_ON_ERROR(i2c_lock(), TAG, "i2c lock failed");
+
+    esp_err_t ret = i2c_master_write_to_device(WAVESHARE_I2C_PORT,
+                                               device_addr,
+                                               data,
+                                               data_len,
+                                               pdMS_TO_TICKS(100));
+    i2c_unlock();
+    return ret;
+}
+
+esp_err_t waveshare_board_i2c_write_read(uint8_t device_addr,
+                                         const uint8_t *write_data,
+                                         size_t write_len,
+                                         uint8_t *read_data,
+                                         size_t read_len)
+{
+    if ((!write_data || write_len == 0) && (!read_data || read_len == 0)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ESP_RETURN_ON_ERROR(waveshare_board_init(), TAG, "board init failed");
+    ESP_RETURN_ON_ERROR(i2c_lock(), TAG, "i2c lock failed");
+
+    esp_err_t ret = i2c_master_write_read_device(WAVESHARE_I2C_PORT,
+                                                 device_addr,
+                                                 write_data,
+                                                 write_len,
+                                                 read_data,
+                                                 read_len,
+                                                 pdMS_TO_TICKS(100));
+    i2c_unlock();
+    return ret;
 }

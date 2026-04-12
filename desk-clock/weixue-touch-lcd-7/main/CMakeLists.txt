@@ -13,6 +13,7 @@ idf_component_register(
         "ui/ui_font_manager.c"
         "ui/ui_stream_binfont.c"
         "ui/ui_music_player.c"
+        "touch/touch_gt911.c"
         "storage/config_store.c"
         "web/web_dashboard.c"
         "audio/audio_player.c"
@@ -22,6 +23,7 @@ idf_component_register(
         "net"
         "power"
         "ui"
+        "touch"
         "storage"
         "web"
         "audio"
@@ -30,6 +32,7 @@ idf_component_register(
         esp_lcd
         esp_driver_gpio
         esp_driver_i2c
+        esp_driver_i2s
         esp_driver_spi
         esp_wifi
         esp_http_client
