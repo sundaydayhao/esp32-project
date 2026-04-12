@@ -161,19 +161,29 @@
  * ================================================================ */
 /*
  * Recommended wiring for Waveshare ESP32-S3-Touch-LCD-7:
- *   GPIO15 -> BCLK
- *   GPIO16 -> LRC / WS
+ *   GPIO43 (UART TX on UART terminal) -> BCLK
+ *   GPIO44 (UART RX on UART terminal) -> LRC / WS
  *   GPIO6  -> DIN
  *
- * GPIO6 is exposed on the Sensor AD header on this board, so avoid enabling
- * the optional battery ADC monitor at the same time as I2S audio output.
+ * Notes:
+ * - GPIO15/16 are routed to the onboard RS485 transceiver on this board, so
+ *   they are not suitable for MAX98357A I2S clocks.
+ * - GPIO43/44 are the ESP32-S3 UART0 pins. To use them as I2S clocks on the
+ *   UART terminal, move the board's UART selector to UART2 so the USB-UART
+ *   chip no longer drives GPIO44.
+ * - GPIO6 is exposed on the Sensor AD terminal, so avoid enabling the
+ *   optional battery ADC monitor at the same time as I2S audio output.
  */
-#define AUDIO_I2S_PIN_BCLK          GPIO_NUM_15
-#define AUDIO_I2S_PIN_LRCK          GPIO_NUM_16
+#define AUDIO_I2S_PIN_BCLK          GPIO_NUM_43
+#define AUDIO_I2S_PIN_LRCK          GPIO_NUM_44
 #define AUDIO_I2S_PIN_DOUT          GPIO_NUM_6
 #define AUDIO_I2S_PIN_MCLK          GPIO_NUM_NC
-#define AUDIO_I2S_SAMPLE_RATE_HZ    44100U
-#define AUDIO_TEST_TONE_FREQ_HZ     440U
+#define AUDIO_I2S_SWAP_BCLK_LRCK    0
+#define AUDIO_I2S_SAMPLE_RATE_HZ    22050U
+#define AUDIO_TEST_TONE_FREQ_HZ     1200U
+#define AUDIO_TEST_TONE_BOOT_VOLUME 30U
+#define AUDIO_TEST_TONE_BOOT_PLAY   1
+#define AUDIO_TEST_TONE_BOOT_DURATION_MS 120U
 
 /* ================================================================
  * Web provisioning

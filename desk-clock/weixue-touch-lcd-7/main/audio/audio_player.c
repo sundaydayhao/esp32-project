@@ -14,6 +14,7 @@
 #include "driver/i2s_std.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
+#include "esp_check.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "freertos/FreeRTOS.h"
@@ -26,7 +27,8 @@
 #define AUDIO_TRACK_DEFAULT_DURATION_SEC 180U
 #define AUDIO_I2S_WRITE_FRAMES          256U
 #define AUDIO_I2S_CHANNEL_COUNT         2U
-#define AUDIO_TEST_TONE_PEAK            8000
+#define AUDIO_TEST_TONE_PEAK            24000
+#define AUDIO_TEST_TONE_SILENCE_TAIL_MS 40U
 
 typedef struct {
     char files[AUDIO_MAX_PLAYLIST_SIZE][AUDIO_MAX_FILENAME_LEN];
@@ -211,6 +213,8 @@ static void unmount_sd_card(void)
 static esp_err_t audio_output_init(void)
 {
     esp_err_t ret;
+    const gpio_num_t bclk_pin = AUDIO_I2S_SWAP_BCLK_LRCK ? AUDIO_I2S_PIN_LRCK : AUDIO_I2S_PIN_BCLK;
+    const gpio_num_t lrck_pin = AUDIO_I2S_SWAP_BCLK_LRCK ? AUDIO_I2S_PIN_BCLK : AUDIO_I2S_PIN_LRCK;
 
     if (s_audio_output.tx_handle) {
         return ESP_OK;
@@ -231,8 +235,8 @@ static esp_err_t audio_output_init(void)
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = AUDIO_I2S_PIN_MCLK,
-            .bclk = AUDIO_I2S_PIN_BCLK,
-            .ws = AUDIO_I2S_PIN_LRCK,
+            .bclk = bclk_pin,
+            .ws = lrck_pin,
             .dout = AUDIO_I2S_PIN_DOUT,
             .din = I2S_GPIO_UNUSED,
             .invert_flags = {
@@ -251,9 +255,10 @@ static esp_err_t audio_output_init(void)
         return ret;
     }
 
-    ESP_LOGI(TAG, "I2S audio ready BCLK=%d LRCK=%d DOUT=%d @ %lu Hz",
-             AUDIO_I2S_PIN_BCLK, AUDIO_I2S_PIN_LRCK, AUDIO_I2S_PIN_DOUT,
-             (unsigned long)AUDIO_I2S_SAMPLE_RATE_HZ);
+    ESP_LOGI(TAG, "I2S audio ready BCLK=%d LRCK=%d DOUT=%d @ %lu Hz swap=%d",
+             bclk_pin, lrck_pin, AUDIO_I2S_PIN_DOUT,
+             (unsigned long)AUDIO_I2S_SAMPLE_RATE_HZ,
+             AUDIO_I2S_SWAP_BCLK_LRCK);
     return ESP_OK;
 }
 
@@ -336,6 +341,84 @@ static esp_err_t audio_output_write_tone(uint8_t volume, size_t *frames_written)
                                       pdMS_TO_TICKS(100));
     if (frames_written) {
         *frames_written = bytes_written / (sizeof(int16_t) * AUDIO_I2S_CHANNEL_COUNT);
+    }
+    return ret;
+}
+
+static esp_err_t audio_output_play_test_tone_sync(uint32_t freq_hz, uint32_t duration_ms, uint8_t volume_pct)
+{
+    esp_err_t ret;
+    const uint32_t total_frames = (AUDIO_I2S_SAMPLE_RATE_HZ * duration_ms) / 1000U;
+    const uint32_t tail_frames = (AUDIO_I2S_SAMPLE_RATE_HZ * AUDIO_TEST_TONE_SILENCE_TAIL_MS) / 1000U;
+    uint32_t half_period_frames;
+    int16_t frame_buf[AUDIO_I2S_WRITE_FRAMES * AUDIO_I2S_CHANNEL_COUNT] = {0};
+    uint32_t phase_frames = 0;
+
+    ESP_RETURN_ON_FALSE(s_audio_output.tx_handle != NULL, ESP_ERR_INVALID_STATE, TAG, "audio output not ready");
+    ESP_RETURN_ON_FALSE(freq_hz > 0, ESP_ERR_INVALID_ARG, TAG, "invalid tone frequency");
+    ESP_RETURN_ON_FALSE(duration_ms > 0, ESP_ERR_INVALID_ARG, TAG, "invalid tone duration");
+
+    if (volume_pct > 100) {
+        volume_pct = 100;
+    }
+
+    half_period_frames = AUDIO_I2S_SAMPLE_RATE_HZ / (freq_hz * 2U);
+    if (half_period_frames == 0) {
+        half_period_frames = 1;
+    }
+
+    const int16_t amplitude = (int16_t)((32767 * volume_pct) / 100 / 2);
+
+    ret = audio_output_start();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    for (uint32_t written_frames = 0; ret == ESP_OK && written_frames < total_frames; ) {
+        const size_t chunk_frames = (size_t)((total_frames - written_frames) > AUDIO_I2S_WRITE_FRAMES ?
+                                             AUDIO_I2S_WRITE_FRAMES : (total_frames - written_frames));
+
+        for (size_t i = 0; i < chunk_frames; i++) {
+            const int16_t sample = (phase_frames < half_period_frames) ? amplitude : (int16_t)-amplitude;
+            frame_buf[i * 2] = sample;
+            frame_buf[i * 2 + 1] = sample;
+
+            phase_frames++;
+            if (phase_frames >= (half_period_frames * 2U)) {
+                phase_frames = 0;
+            }
+        }
+
+        size_t bytes_written = 0;
+        ret = i2s_channel_write(s_audio_output.tx_handle,
+                                frame_buf,
+                                chunk_frames * AUDIO_I2S_CHANNEL_COUNT * sizeof(int16_t),
+                                &bytes_written,
+                                pdMS_TO_TICKS(100));
+        if (ret == ESP_OK) {
+            written_frames += (uint32_t)(bytes_written / (AUDIO_I2S_CHANNEL_COUNT * sizeof(int16_t)));
+        }
+    }
+
+    for (uint32_t flushed_frames = 0; ret == ESP_OK && flushed_frames < tail_frames; ) {
+        const size_t chunk_frames = (size_t)((tail_frames - flushed_frames) > AUDIO_I2S_WRITE_FRAMES ?
+                                             AUDIO_I2S_WRITE_FRAMES : (tail_frames - flushed_frames));
+        memset(frame_buf, 0, chunk_frames * AUDIO_I2S_CHANNEL_COUNT * sizeof(int16_t));
+
+        size_t bytes_written = 0;
+        ret = i2s_channel_write(s_audio_output.tx_handle,
+                                frame_buf,
+                                chunk_frames * AUDIO_I2S_CHANNEL_COUNT * sizeof(int16_t),
+                                &bytes_written,
+                                pdMS_TO_TICKS(100));
+        if (ret == ESP_OK) {
+            flushed_frames += (uint32_t)(bytes_written / (AUDIO_I2S_CHANNEL_COUNT * sizeof(int16_t)));
+        }
+    }
+
+    const esp_err_t stop_ret = audio_output_stop();
+    if (ret == ESP_OK) {
+        ret = stop_ret;
     }
     return ret;
 }
@@ -430,7 +513,7 @@ esp_err_t audio_player_init(void)
     }
 
     memset(&s_status, 0, sizeof(s_status));
-    s_status.volume = 50;
+    s_status.volume = AUDIO_TEST_TONE_BOOT_VOLUME;
     s_status.state = AUDIO_STATE_STOPPED;
     s_status.current_track = -1;
 
@@ -440,6 +523,21 @@ esp_err_t audio_player_init(void)
         s_status_mutex = NULL;
         return ret;
     }
+
+#if AUDIO_TEST_TONE_BOOT_PLAY
+    ESP_LOGI(TAG, "Boot audio self-test tone start duration=%ums volume=%u%% tone=%uHz",
+             (unsigned)AUDIO_TEST_TONE_BOOT_DURATION_MS,
+             (unsigned)AUDIO_TEST_TONE_BOOT_VOLUME,
+             (unsigned)AUDIO_TEST_TONE_FREQ_HZ);
+    ret = audio_output_play_test_tone_sync(AUDIO_TEST_TONE_FREQ_HZ,
+                                           AUDIO_TEST_TONE_BOOT_DURATION_MS,
+                                           AUDIO_TEST_TONE_BOOT_VOLUME);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Boot audio self-test tone failed: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "Boot audio self-test tone finished");
+    }
+#endif
 
     ret = mount_sd_card();
     if (ret != ESP_OK) {
@@ -465,6 +563,7 @@ esp_err_t audio_player_init(void)
     }
 
     ESP_LOGI(TAG, "Audio player initialized");
+
     return ESP_OK;
 }
 
