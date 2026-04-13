@@ -197,7 +197,7 @@ size_t lcd_driver_get_framebuf_size(void)
 
 bool lcd_driver_uses_direct_mode(void)
 {
-    return true;
+    return false;
 }
 
 bool lcd_driver_needs_rgb565_byte_swap(void)

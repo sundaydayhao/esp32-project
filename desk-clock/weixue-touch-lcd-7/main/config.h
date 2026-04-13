@@ -193,7 +193,7 @@
 /* ================================================================
  * Tasks
  * ================================================================ */
-#define TASK_STACK_UI           (8  * 1024)
+#define TASK_STACK_UI           (12 * 1024)
 #define TASK_STACK_LCD_DIAG     (4  * 1024)
 #define TASK_STACK_WEATHER      (16 * 1024)
 #define TASK_STACK_NTP          (4  * 1024)

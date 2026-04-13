@@ -4,6 +4,7 @@
  */
 #include "storage/media_library.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,9 +57,24 @@ static bool is_video_file(const char *filename)
            has_extension(filename, ".mpeg");
 }
 
+static void normalize_lvgl_extension(char *path)
+{
+    char *slash = strrchr(path, '/');
+    char *ext = strrchr(path, '.');
+
+    if (!ext || (slash && ext < slash)) {
+        return;
+    }
+
+    for (char *p = ext + 1; *p != '\0'; ++p) {
+        *p = (char)tolower((unsigned char)*p);
+    }
+}
+
 static void build_lvgl_path(const char *abs_path, char *out, size_t out_size)
 {
     snprintf(out, out_size, "A:%s", abs_path);
+    normalize_lvgl_extension(out);
 }
 
 static void build_abs_path(const char *dir_path, const char *filename, char *out, size_t out_size)

@@ -1,5 +1,6 @@
 #include "ui_renderer.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +11,7 @@
 #include "audio/audio_player.h"
 #include "config.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -29,18 +31,26 @@
 
 #define LVGL_TICK_PERIOD_MS      5
 #define UI_MIN_DELAY_MS          10
-#define UI_MAX_DELAY_MS          100
+#define UI_MAX_DELAY_MS          20
 #define UI_STATUS_UPDATE_MS      5000
 #define UI_CLOCK_UPDATE_MS       1000
 #define UI_MUSIC_UPDATE_MS       1000
 #define UI_PHOTO_ROTATE_MS       5000
 #define UI_EVENT_QUEUE_LEN       16
 #define UI_FLUSH_TIMEOUT_MS      1000
+#define UI_DRAW_BUF_LINES        40
 #define UI_DEGREE_SYMBOL         "\xC2\xB0"
 #define UI_PAGE_COUNT            4
 #define UI_CALENDAR_COLS         7
 #define UI_CALENDAR_ROWS         6
 #define UI_CALENDAR_CELL_COUNT   (UI_CALENDAR_COLS * UI_CALENDAR_ROWS)
+#define UI_PAGE_STAGE_X          16
+#define UI_PAGE_STAGE_Y          66
+#define UI_PAGE_STAGE_W          (LCD_H_RES - 32)
+#define UI_PAGE_STAGE_H          388
+#define UI_SWIPE_ACTIVATE_PX     36
+#define UI_SWIPE_COMMIT_PX       72
+#define UI_SWIPE_DIRECTION_BIAS  12
 
 typedef enum {
     WEATHER_ICON_SUNNY = 0,
@@ -82,7 +92,7 @@ typedef struct {
     lv_obj_t *battery_icon_label;
     lv_obj_t *battery_label;
 
-    lv_obj_t *tileview;
+    lv_obj_t *page_stage;
     lv_obj_t *pages[UI_PAGE_COUNT];
     lv_obj_t *page_name_label;
     lv_obj_t *page_dots[UI_PAGE_COUNT];
@@ -182,6 +192,20 @@ typedef struct {
     char video_status_text[96];
 } ui_state_t;
 
+typedef struct {
+    bool pressed;
+    lv_point_t point;
+} ui_touch_sample_t;
+
+typedef struct {
+    bool prev_pressed;
+    bool tracking;
+    bool committed;
+    lv_point_t start_point;
+    lv_point_t last_point;
+    int source_page;
+} ui_page_swipe_state_t;
+
 static const char *s_page_names[UI_PAGE_COUNT] = {"月历", "照片", "音乐", "视频"};
 static const char *s_calendar_headers[UI_CALENDAR_COLS] = {"一", "二", "三", "四", "五", "六", "日"};
 
@@ -198,12 +222,17 @@ static bool s_time_ready = false;
 static bool s_ui_ready = false;
 static lv_indev_t *s_touch_indev = NULL;
 static lv_point_t s_last_touch_point = {0, 0};
+static void *s_lvgl_buf1 = NULL;
+static void *s_lvgl_buf2 = NULL;
+static ui_touch_sample_t s_touch_sample = {0};
+static ui_page_swipe_state_t s_page_swipe = {0};
 
 static void update_photo_view(void);
 static void update_video_preview(void);
 static void update_video_card_selection(void);
 static void update_page_indicator(void);
-static void tileview_page_changed_event_cb(lv_event_t *e);
+static void apply_page_layout(int page);
+static void handle_page_swipe(void);
 static void switch_to_page(int page, lv_anim_enable_t anim_en);
 
 static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t storage_size, const char *text)
@@ -445,12 +474,6 @@ static void ui_app_event_handler(void *arg, esp_event_base_t base, int32_t id, v
     }
 }
 
-static bool lvgl_flush_ready_cb(void *user_ctx)
-{
-    lv_display_flush_ready((lv_display_t *)user_ctx);
-    return false;
-}
-
 static bool IRAM_ATTR lvgl_flush_notify_cb(void *user_ctx)
 {
     (void)user_ctx;
@@ -468,7 +491,6 @@ static bool IRAM_ATTR lvgl_flush_notify_cb(void *user_ctx)
 static void lvgl_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_t *px_map)
 {
     esp_lcd_panel_handle_t panel = (esp_lcd_panel_handle_t)lv_display_get_user_data(display);
-    bool direct_mode = lcd_driver_uses_direct_mode();
 
     s_flush_count++;
     if (s_flush_count <= 5) {
@@ -481,21 +503,17 @@ static void lvgl_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_t 
         lv_draw_sw_rgb565_swap(px_map, (area->x2 + 1 - area->x1) * (area->y2 + 1 - area->y1));
     }
 
-    if (!direct_mode) {
-        s_flush_wait_task = xTaskGetCurrentTaskHandle();
-        xTaskNotifyStateClear(s_flush_wait_task);
-    }
+    s_flush_wait_task = xTaskGetCurrentTaskHandle();
+    xTaskNotifyStateClear(s_flush_wait_task);
 
     esp_lcd_panel_draw_bitmap(panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
 
-    if (!direct_mode) {
-        uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(UI_FLUSH_TIMEOUT_MS));
-        s_flush_wait_task = NULL;
-        if (notified == 0) {
-            ESP_LOGE(TAG_UI, "Timed out waiting for LCD flush completion");
-        }
-        lv_display_flush_ready(display);
+    uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(UI_FLUSH_TIMEOUT_MS));
+    s_flush_wait_task = NULL;
+    if (notified == 0) {
+        ESP_LOGE(TAG_UI, "Timed out waiting for LCD flush completion");
     }
+    lv_display_flush_ready(display);
 }
 
 static void lvgl_tick_cb(void *arg)
@@ -513,14 +531,16 @@ static void lvgl_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     LV_UNUSED(indev);
 
     if (touch_gt911_read(&x, &y, &pressed) == ESP_OK && pressed) {
-        if (s_ui.tileview) {
-            lv_coord_t tile_y = lv_obj_get_y(s_ui.tileview);
-            if (tile_y > 0 && y < (uint16_t)lv_obj_get_height(s_ui.tileview)) {
-                uint32_t adjusted_y = (uint32_t)y + (uint32_t)tile_y;
-                if (adjusted_y >= LCD_V_RES) {
-                    adjusted_y = LCD_V_RES - 1;
+        if (s_ui.page_stage &&
+            x < lv_obj_get_width(s_ui.page_stage) &&
+            y < lv_obj_get_height(s_ui.page_stage)) {
+            const int32_t stage_y = lv_obj_get_y(s_ui.page_stage);
+            if (stage_y > 0) {
+                uint32_t mapped_y = (uint32_t)y + (uint32_t)stage_y;
+                if (mapped_y >= LCD_V_RES) {
+                    mapped_y = LCD_V_RES - 1;
                 }
-                y = (uint16_t)adjusted_y;
+                y = (uint16_t)mapped_y;
             }
         }
 
@@ -528,9 +548,13 @@ static void lvgl_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         s_last_touch_point.y = y;
         data->point = s_last_touch_point;
         data->state = LV_INDEV_STATE_PRESSED;
+        s_touch_sample.point = s_last_touch_point;
+        s_touch_sample.pressed = true;
     } else {
         data->point = s_last_touch_point;
         data->state = LV_INDEV_STATE_RELEASED;
+        s_touch_sample.point = s_last_touch_point;
+        s_touch_sample.pressed = false;
     }
 }
 
@@ -613,6 +637,98 @@ static void set_obj_hidden(lv_obj_t *obj, bool hidden)
     } else {
         lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+static bool copy_src_with_lowercase_ext(const char *src, char *out, size_t out_size)
+{
+    char *slash = NULL;
+    char *ext = NULL;
+    bool changed = false;
+
+    if (!src || !out || out_size == 0) {
+        return false;
+    }
+
+    strlcpy(out, src, out_size);
+    slash = strrchr(out, '/');
+    ext = strrchr(out, '.');
+    if (!ext || (slash && ext < slash)) {
+        return false;
+    }
+
+    for (char *p = ext + 1; *p != '\0'; ++p) {
+        char lower = (char)tolower((unsigned char)*p);
+        if (*p != lower) {
+            *p = lower;
+            changed = true;
+        }
+    }
+
+    return changed;
+}
+
+static const char *resolve_image_src(const char *src,
+                                     lv_image_header_t *header,
+                                     char *normalized_src,
+                                     size_t normalized_src_size)
+{
+    if (!src || src[0] == '\0' || !header) {
+        return NULL;
+    }
+
+    if (lv_image_decoder_get_info(src, header) == LV_RESULT_OK) {
+        return src;
+    }
+
+    if (copy_src_with_lowercase_ext(src, normalized_src, normalized_src_size) &&
+        lv_image_decoder_get_info(normalized_src, header) == LV_RESULT_OK) {
+        ESP_LOGI(TAG_UI, "Image decode probe recovered with normalized src=%s", normalized_src);
+        return normalized_src;
+    }
+
+    ESP_LOGW(TAG_UI, "Image decode probe failed for src=%s", src);
+    return NULL;
+}
+
+static void fit_image_to_bounds(lv_obj_t *image, const lv_image_header_t *header)
+{
+    lv_obj_t *parent = NULL;
+    int32_t max_w = 0;
+    int32_t max_h = 0;
+    uint32_t scale = LV_SCALE_NONE;
+
+    if (!image || !header || header->w == 0 || header->h == 0) {
+        return;
+    }
+
+    parent = lv_obj_get_parent(image);
+    if (parent) {
+        lv_obj_update_layout(parent);
+        max_w = lv_obj_get_content_width(parent);
+        max_h = lv_obj_get_content_height(parent);
+    }
+
+    if (max_w <= 0) {
+        max_w = lv_obj_get_width(image);
+    }
+    if (max_h <= 0) {
+        max_h = lv_obj_get_height(image);
+    }
+
+    if (max_w > 0 &&
+        max_h > 0 &&
+        ((int32_t)header->w > max_w || (int32_t)header->h > max_h)) {
+        uint32_t scale_x = ((uint32_t)max_w * LV_SCALE_NONE) / header->w;
+        uint32_t scale_y = ((uint32_t)max_h * LV_SCALE_NONE) / header->h;
+        scale = scale_x < scale_y ? scale_x : scale_y;
+        if (scale == 0) {
+            scale = 1;
+        }
+    }
+
+    lv_image_set_inner_align(image, LV_IMAGE_ALIGN_CENTER);
+    lv_image_set_scale(image, scale);
+    lv_image_set_antialias(image, true);
 }
 
 static void set_weather_icon_mode(weather_icon_mode_t mode)
@@ -797,34 +913,43 @@ static void update_page_indicator(void)
                               s_page_names[s_ui.active_page]);
 }
 
-static void tileview_page_changed_event_cb(lv_event_t *e)
+static bool point_in_page_stage(const lv_point_t *point)
 {
-    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
-        return;
+    if (!point) {
+        return false;
     }
 
-    lv_obj_t *tile = lv_tileview_get_tile_active(lv_event_get_current_target(e));
-    if (!tile) {
-        return;
-    }
+    return point->x >= UI_PAGE_STAGE_X &&
+           point->x < UI_PAGE_STAGE_X + UI_PAGE_STAGE_W &&
+           point->y >= UI_PAGE_STAGE_Y &&
+           point->y < UI_PAGE_STAGE_Y + UI_PAGE_STAGE_H;
+}
 
+static void apply_page_layout(int page)
+{
     for (int i = 0; i < UI_PAGE_COUNT; i++) {
-        if (s_ui.pages[i] == tile) {
-            if (s_ui.active_page != i) {
-                s_ui.active_page = i;
-                update_page_indicator();
-            }
-            return;
+        if (!s_ui.pages[i]) {
+            continue;
         }
+
+        if (lv_obj_get_parent(s_ui.pages[i]) != s_ui.page_stage) {
+            lv_obj_set_parent(s_ui.pages[i], s_ui.page_stage);
+        }
+
+        lv_obj_set_size(s_ui.pages[i], UI_PAGE_STAGE_W, UI_PAGE_STAGE_H);
+        lv_obj_set_pos(s_ui.pages[i], 0, 0);
+        set_obj_hidden(s_ui.pages[i], i != page);
     }
+
+    if (page >= 0 && page < UI_PAGE_COUNT && s_ui.pages[page]) {
+        lv_obj_move_foreground(s_ui.pages[page]);
+    }
+
+    lv_obj_invalidate(s_ui.page_stage);
 }
 
 static void switch_to_page(int page, lv_anim_enable_t anim_en)
 {
-    if (!s_ui.tileview) {
-        return;
-    }
-
     if (page < 0) {
         page = 0;
     } else if (page >= UI_PAGE_COUNT) {
@@ -837,19 +962,96 @@ static void switch_to_page(int page, lv_anim_enable_t anim_en)
 
     s_ui.active_page = page;
     update_page_indicator();
-    lv_tileview_set_tile(s_ui.tileview, s_ui.pages[page], anim_en);
+    apply_page_layout(page);
+    lv_obj_invalidate(lv_screen_active());
+    LV_UNUSED(anim_en);
 }
 
-static void show_image_or_placeholder(lv_obj_t *image,
+static void reset_page_swipe_state(void)
+{
+    s_page_swipe.tracking = false;
+    s_page_swipe.committed = false;
+    s_page_swipe.source_page = -1;
+}
+
+static void try_commit_page_swipe(void)
+{
+    if (!s_page_swipe.tracking || s_page_swipe.committed) {
+        return;
+    }
+
+    const int total_dx = s_page_swipe.last_point.x - s_page_swipe.start_point.x;
+    const int total_dy = s_page_swipe.last_point.y - s_page_swipe.start_point.y;
+
+    if (abs(total_dx) < UI_SWIPE_ACTIVATE_PX ||
+        abs(total_dx) <= abs(total_dy) + UI_SWIPE_DIRECTION_BIAS ||
+        abs(total_dx) < UI_SWIPE_COMMIT_PX) {
+        return;
+    }
+
+    const int direction = total_dx < 0 ? 1 : -1;
+    const int target_page = s_page_swipe.source_page + direction;
+    if (target_page >= 0 && target_page < UI_PAGE_COUNT) {
+        ESP_LOGI(TAG_UI,
+                 "Swipe commit source=%d target=%d dx=%d dy=%d",
+                 s_page_swipe.source_page,
+                 target_page,
+                 total_dx,
+                 total_dy);
+        if (s_touch_indev) {
+            lv_indev_reset(s_touch_indev, NULL);
+        }
+        switch_to_page(target_page, LV_ANIM_OFF);
+        s_page_swipe.committed = true;
+    }
+}
+
+static void handle_page_swipe(void)
+{
+    const bool pressed = s_touch_sample.pressed;
+    const lv_point_t point = s_touch_sample.point;
+
+    if (pressed && !s_page_swipe.prev_pressed) {
+        s_page_swipe.tracking = point_in_page_stage(&point);
+        s_page_swipe.committed = false;
+        s_page_swipe.start_point = point;
+        s_page_swipe.last_point = point;
+        s_page_swipe.source_page = s_ui.active_page;
+    } else if (pressed) {
+        s_page_swipe.last_point = point;
+        try_commit_page_swipe();
+    }
+
+    if (!pressed && s_page_swipe.prev_pressed) {
+        if (s_page_swipe.tracking && !s_page_swipe.committed) {
+            try_commit_page_swipe();
+        }
+
+        reset_page_swipe_state();
+    }
+
+    s_page_swipe.prev_pressed = pressed;
+}
+
+static bool show_image_or_placeholder(lv_obj_t *image,
                                       lv_obj_t *placeholder,
                                       const char *src,
                                       const char *fallback_symbol)
 {
     if (src && src[0] != '\0') {
-        lv_image_set_src(image, src);
-        set_obj_hidden(image, false);
-        set_obj_hidden(placeholder, true);
-        return;
+        lv_image_header_t header = {0};
+        char normalized_src[MEDIA_LIBRARY_PATH_LEN + 4] = {0};
+        const char *resolved_src = resolve_image_src(src,
+                                                     &header,
+                                                     normalized_src,
+                                                     sizeof(normalized_src));
+        if (resolved_src) {
+            lv_image_set_src(image, resolved_src);
+            fit_image_to_bounds(image, &header);
+            set_obj_hidden(image, false);
+            set_obj_hidden(placeholder, true);
+            return true;
+        }
     }
 
     if (fallback_symbol) {
@@ -857,11 +1059,12 @@ static void show_image_or_placeholder(lv_obj_t *image,
     }
     set_obj_hidden(image, true);
     set_obj_hidden(placeholder, false);
+    return false;
 }
 
 static void photo_nav_event_cb(lv_event_t *e)
 {
-    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+    if (lv_event_get_code(e) != LV_EVENT_RELEASED) {
         return;
     }
 
@@ -1083,7 +1286,7 @@ static void create_photo_page(lv_obj_t *page)
 
     s_ui.photo_image = lv_image_create(photo_frame);
     lv_obj_set_size(s_ui.photo_image, LV_PCT(100), LV_PCT(100));
-    lv_image_set_inner_align(s_ui.photo_image, LV_IMAGE_ALIGN_STRETCH);
+    lv_image_set_inner_align(s_ui.photo_image, LV_IMAGE_ALIGN_CENTER);
 
     s_ui.photo_placeholder_icon = lv_label_create(photo_frame);
     lv_obj_center(s_ui.photo_placeholder_icon);
@@ -1122,9 +1325,9 @@ static void create_photo_page(lv_obj_t *page)
     lv_obj_set_style_text_align(s_ui.photo_status_label, LV_TEXT_ALIGN_CENTER, 0);
 
     lv_obj_t *btn_prev = lv_button_create(info_panel);
-    lv_obj_set_size(btn_prev, 82, 46);
-    lv_obj_set_pos(btn_prev, 10, 300);
-    lv_obj_add_event_cb(btn_prev, photo_nav_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)-1);
+    lv_obj_set_size(btn_prev, 96, 56);
+    lv_obj_set_pos(btn_prev, 0, 268);
+    lv_obj_add_event_cb(btn_prev, photo_nav_event_cb, LV_EVENT_RELEASED, (void *)(intptr_t)-1);
     style_chip(btn_prev, lv_color_hex(0x15273A));
 
     lv_obj_t *btn_prev_label = lv_label_create(btn_prev);
@@ -1134,9 +1337,9 @@ static void create_photo_page(lv_obj_t *page)
     lv_label_set_text(btn_prev_label, LV_SYMBOL_PREV);
 
     lv_obj_t *btn_next = lv_button_create(info_panel);
-    lv_obj_set_size(btn_next, 82, 46);
-    lv_obj_set_pos(btn_next, 110, 300);
-    lv_obj_add_event_cb(btn_next, photo_nav_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)1);
+    lv_obj_set_size(btn_next, 96, 56);
+    lv_obj_set_pos(btn_next, 106, 268);
+    lv_obj_add_event_cb(btn_next, photo_nav_event_cb, LV_EVENT_RELEASED, (void *)(intptr_t)1);
     style_chip(btn_next, lv_color_hex(0x15273A));
 
     lv_obj_t *btn_next_label = lv_label_create(btn_next);
@@ -1275,24 +1478,18 @@ static void create_ui(void)
 
     create_status_bar(screen);
 
-    s_ui.tileview = lv_tileview_create(screen);
-    lv_obj_set_size(s_ui.tileview, LCD_H_RES - 32, 388);
-    lv_obj_set_pos(s_ui.tileview, 16, 66);
-    lv_obj_set_style_bg_opa(s_ui.tileview, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(s_ui.tileview, 0, 0);
-    lv_obj_set_style_pad_all(s_ui.tileview, 0, 0);
-    lv_obj_set_scrollbar_mode(s_ui.tileview, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_add_event_cb(s_ui.tileview, tileview_page_changed_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
-    static const lv_dir_t page_dirs[UI_PAGE_COUNT] = {
-        LV_DIR_RIGHT,
-        LV_DIR_LEFT | LV_DIR_RIGHT,
-        LV_DIR_LEFT | LV_DIR_RIGHT,
-        LV_DIR_LEFT,
-    };
+    s_ui.page_stage = lv_obj_create(screen);
+    lv_obj_set_size(s_ui.page_stage, UI_PAGE_STAGE_W, UI_PAGE_STAGE_H);
+    lv_obj_set_pos(s_ui.page_stage, UI_PAGE_STAGE_X, UI_PAGE_STAGE_Y);
+    lv_obj_clear_flag(s_ui.page_stage, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(s_ui.page_stage, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_ui.page_stage, 0, 0);
+    lv_obj_set_style_pad_all(s_ui.page_stage, 0, 0);
 
     for (int i = 0; i < UI_PAGE_COUNT; i++) {
-        s_ui.pages[i] = lv_tileview_add_tile(s_ui.tileview, i, 0, page_dirs[i]);
+        s_ui.pages[i] = lv_obj_create(s_ui.page_stage);
+        lv_obj_set_size(s_ui.pages[i], UI_PAGE_STAGE_W, UI_PAGE_STAGE_H);
+        lv_obj_set_pos(s_ui.pages[i], 0, 0);
         lv_obj_clear_flag(s_ui.pages[i], LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_bg_opa(s_ui.pages[i], LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(s_ui.pages[i], 0, 0);
@@ -1558,6 +1755,7 @@ static void update_weather_text(void)
 static void update_photo_view(void)
 {
     int count = media_library_get_photo_count();
+    bool photo_ready = false;
     if (count <= 0) {
         s_ui.current_photo_index = 0;
         s_ui.rendered_photo_index = -1;
@@ -1593,15 +1791,18 @@ static void update_photo_view(void)
         return;
     }
 
-    show_image_or_placeholder(s_ui.photo_image,
-                              s_ui.photo_placeholder_icon,
-                              entry->preview_lvgl_path,
-                              LV_SYMBOL_IMAGE);
+    const char *photo_filename = strrchr(entry->path, '/');
+    photo_filename = photo_filename ? photo_filename + 1 : entry->path;
+
+    photo_ready = show_image_or_placeholder(s_ui.photo_image,
+                                            s_ui.photo_placeholder_icon,
+                                            entry->preview_lvgl_path[0] ? entry->preview_lvgl_path : entry->lvgl_path,
+                                            LV_SYMBOL_IMAGE);
 
     set_label_text_if_changed(s_ui.photo_name_label,
                               s_ui.photo_name_text,
                               sizeof(s_ui.photo_name_text),
-                              entry->name);
+                              photo_filename);
 
     snprintf(s_ui.photo_meta_text, sizeof(s_ui.photo_meta_text),
              "%d / %d", s_ui.current_photo_index + 1, count);
@@ -1610,8 +1811,10 @@ static void update_photo_view(void)
     set_label_text_if_changed(s_ui.photo_status_label,
                               s_ui.photo_status_text,
                               sizeof(s_ui.photo_status_text),
-                              count > 1 ? "轮播中，可在本屏停留自动切换，也可点左右键手动切换。" :
-                                          "当前仅有 1 张照片。");
+                              photo_ready ?
+                              (count > 1 ? "轮播中，可在本屏停留自动切换，也可点左右键手动切换。" :
+                                           "当前仅有 1 张照片。") :
+                              "图片文件已找到，但当前未能解码显示，请查看串口日志中的图片路径。");
     s_ui.rendered_photo_index = s_ui.current_photo_index;
     s_ui.rendered_photo_count = count;
 }
@@ -1965,23 +2168,20 @@ static void initialize_sd_media_ui(void)
 esp_err_t ui_renderer_init(void)
 {
     esp_lcd_panel_handle_t panel = lcd_driver_get_panel();
-    uint16_t *fb0 = NULL;
-    uint16_t *fb1 = NULL;
-    size_t fb_size = 0;
-    lv_display_render_mode_t render_mode = LV_DISPLAY_RENDER_MODE_PARTIAL;
+    size_t draw_buf_size = (size_t)LCD_H_RES * UI_DRAW_BUF_LINES * sizeof(uint16_t);
 
     if (!panel) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    lcd_driver_get_framebuf(&fb0, &fb1);
-    fb_size = lcd_driver_get_framebuf_size();
-    if (!fb0 || !fb1 || fb_size == 0) {
-        return ESP_ERR_INVALID_STATE;
+    if (!s_lvgl_buf1) {
+        s_lvgl_buf1 = heap_caps_malloc(draw_buf_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     }
-
-    if (lcd_driver_uses_direct_mode()) {
-        render_mode = LV_DISPLAY_RENDER_MODE_DIRECT;
+    if (!s_lvgl_buf2) {
+        s_lvgl_buf2 = heap_caps_malloc(draw_buf_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    if (!s_lvgl_buf1 || !s_lvgl_buf2) {
+        return ESP_ERR_NO_MEM;
     }
 
     lv_init();
@@ -1989,14 +2189,13 @@ esp_err_t ui_renderer_init(void)
     s_display = lv_display_create(LCD_H_RES, LCD_V_RES);
     lv_display_set_user_data(s_display, panel);
     lv_display_set_color_format(s_display, LV_COLOR_FORMAT_RGB565);
-    lv_display_set_buffers(s_display, fb0, fb1, fb_size, render_mode);
+    lv_display_set_buffers(s_display,
+                           s_lvgl_buf1,
+                           s_lvgl_buf2,
+                           draw_buf_size,
+                           LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(s_display, lvgl_flush_cb);
-
-    if (lcd_driver_uses_direct_mode()) {
-        ESP_ERROR_CHECK(lcd_driver_register_flush_done_callback(lvgl_flush_ready_cb, s_display));
-    } else {
-        ESP_ERROR_CHECK(lcd_driver_register_flush_done_callback(lvgl_flush_notify_cb, NULL));
-    }
+    ESP_ERROR_CHECK(lcd_driver_register_flush_done_callback(lvgl_flush_notify_cb, NULL));
 
     const esp_timer_create_args_t timer_args = {
         .callback = lvgl_tick_cb,
@@ -2024,6 +2223,7 @@ esp_err_t ui_renderer_init(void)
     s_ui.rendered_calendar_day = -1;
     s_ui.calendar_rendered_valid = false;
     s_ui.status_colors_valid = false;
+    reset_page_swipe_state();
 
     update_all_ui_text();
     lv_obj_invalidate(lv_screen_active());
@@ -2113,6 +2313,10 @@ void ui_renderer_task(void *arg)
         }
 
         delay_ms = lv_timer_handler();
+        handle_page_swipe();
+        if (s_touch_sample.pressed || s_page_swipe.tracking || s_page_swipe.prev_pressed) {
+            delay_ms = UI_MIN_DELAY_MS;
+        }
         if (delay_ms < UI_MIN_DELAY_MS) {
             delay_ms = UI_MIN_DELAY_MS;
         } else if (delay_ms > UI_MAX_DELAY_MS) {
