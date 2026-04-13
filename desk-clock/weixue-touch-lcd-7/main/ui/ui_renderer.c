@@ -36,9 +36,6 @@
 #define UI_PHOTO_ROTATE_MS       5000
 #define UI_EVENT_QUEUE_LEN       16
 #define UI_FLUSH_TIMEOUT_MS      1000
-#define UI_SWIPE_MIN_X_PX        90
-#define UI_SWIPE_MAX_Y_PX        80
-#define UI_TAP_MAX_MOVE_PX       24
 #define UI_DEGREE_SYMBOL         "\xC2\xB0"
 #define UI_PAGE_COUNT            4
 #define UI_CALENDAR_COLS         7
@@ -201,19 +198,13 @@ static bool s_time_ready = false;
 static bool s_ui_ready = false;
 static lv_indev_t *s_touch_indev = NULL;
 static lv_point_t s_last_touch_point = {0, 0};
-static lv_point_t s_touch_start_point = {0, 0};
-static lv_point_t s_touch_last_move_point = {0, 0};
-static bool s_touch_pressed = false;
-static bool s_touch_swipe_tracking = false;
-static int s_pending_page_delta = 0;
 
 static void update_photo_view(void);
 static void update_video_preview(void);
 static void update_video_card_selection(void);
 static void update_page_indicator(void);
-static bool point_in_obj(lv_obj_t *obj, const lv_point_t *point);
+static void tileview_page_changed_event_cb(lv_event_t *e);
 static void switch_to_page(int page, lv_anim_enable_t anim_en);
-static void process_pending_swipe(void);
 
 static bool set_label_text_if_changed(lv_obj_t *label, char *storage, size_t storage_size, const char *text)
 {
@@ -513,18 +504,6 @@ static void lvgl_tick_cb(void *arg)
     lv_tick_inc(LVGL_TICK_PERIOD_MS);
 }
 
-static bool point_in_obj(lv_obj_t *obj, const lv_point_t *point)
-{
-    if (!obj || !point) {
-        return false;
-    }
-
-    lv_area_t area;
-    lv_obj_get_coords(obj, &area);
-    return point->x >= area.x1 && point->x <= area.x2 &&
-           point->y >= area.y1 && point->y <= area.y2;
-}
-
 static void lvgl_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     uint16_t x = 0;
@@ -552,38 +531,6 @@ static void lvgl_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     } else {
         data->point = s_last_touch_point;
         data->state = LV_INDEV_STATE_RELEASED;
-    }
-
-    if (pressed) {
-        if (!s_touch_pressed) {
-            s_touch_pressed = true;
-            s_touch_start_point = s_last_touch_point;
-            s_touch_last_move_point = s_last_touch_point;
-            s_touch_swipe_tracking = point_in_obj(s_ui.tileview, &s_last_touch_point);
-        } else if (s_touch_swipe_tracking) {
-            s_touch_last_move_point = s_last_touch_point;
-        }
-    } else if (s_touch_pressed) {
-        int dx = s_touch_last_move_point.x - s_touch_start_point.x;
-        int dy = s_touch_last_move_point.y - s_touch_start_point.y;
-        int abs_dx = dx >= 0 ? dx : -dx;
-        int abs_dy = dy >= 0 ? dy : -dy;
-
-        if (s_touch_swipe_tracking && s_pending_page_delta == 0) {
-            if (abs_dx >= UI_SWIPE_MIN_X_PX && abs_dx > abs_dy && abs_dy <= UI_SWIPE_MAX_Y_PX) {
-                s_pending_page_delta = dx < 0 ? 1 : -1;
-            }
-        }
-
-        if (s_pending_page_delta == 0 &&
-            abs_dx <= UI_TAP_MAX_MOVE_PX &&
-            abs_dy <= UI_TAP_MAX_MOVE_PX &&
-            s_ui.active_page == UI_PAGE_MUSIC) {
-            (void)ui_music_player_handle_touch_release(&s_last_touch_point);
-        }
-
-        s_touch_pressed = false;
-        s_touch_swipe_tracking = false;
     }
 }
 
@@ -850,10 +797,30 @@ static void update_page_indicator(void)
                               s_page_names[s_ui.active_page]);
 }
 
+static void tileview_page_changed_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+
+    lv_obj_t *tile = lv_tileview_get_tile_active(lv_event_get_current_target(e));
+    if (!tile) {
+        return;
+    }
+
+    for (int i = 0; i < UI_PAGE_COUNT; i++) {
+        if (s_ui.pages[i] == tile) {
+            if (s_ui.active_page != i) {
+                s_ui.active_page = i;
+                update_page_indicator();
+            }
+            return;
+        }
+    }
+}
+
 static void switch_to_page(int page, lv_anim_enable_t anim_en)
 {
-    LV_UNUSED(anim_en);
-
     if (!s_ui.tileview) {
         return;
     }
@@ -864,23 +831,13 @@ static void switch_to_page(int page, lv_anim_enable_t anim_en)
         page = UI_PAGE_COUNT - 1;
     }
 
-    s_ui.active_page = page;
-    for (int i = 0; i < UI_PAGE_COUNT; i++) {
-        set_obj_hidden(s_ui.pages[i], i != s_ui.active_page);
-    }
-    update_page_indicator();
-}
-
-static void process_pending_swipe(void)
-{
-    int delta = s_pending_page_delta;
-
-    if (delta == 0) {
+    if (!s_ui.pages[page]) {
         return;
     }
 
-    s_pending_page_delta = 0;
-    switch_to_page(s_ui.active_page + delta, LV_ANIM_OFF);
+    s_ui.active_page = page;
+    update_page_indicator();
+    lv_tileview_set_tile(s_ui.tileview, s_ui.pages[page], anim_en);
 }
 
 static void show_image_or_placeholder(lv_obj_t *image,
@@ -1318,22 +1275,24 @@ static void create_ui(void)
 
     create_status_bar(screen);
 
-    s_ui.tileview = lv_obj_create(screen);
-    lv_obj_clear_flag(s_ui.tileview, LV_OBJ_FLAG_SCROLLABLE);
+    s_ui.tileview = lv_tileview_create(screen);
     lv_obj_set_size(s_ui.tileview, LCD_H_RES - 32, 388);
     lv_obj_set_pos(s_ui.tileview, 16, 66);
     lv_obj_set_style_bg_opa(s_ui.tileview, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(s_ui.tileview, 0, 0);
     lv_obj_set_style_pad_all(s_ui.tileview, 0, 0);
     lv_obj_set_scrollbar_mode(s_ui.tileview, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_event_cb(s_ui.tileview, tileview_page_changed_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    static const lv_dir_t page_dirs[UI_PAGE_COUNT] = {
+        LV_DIR_RIGHT,
+        LV_DIR_LEFT | LV_DIR_RIGHT,
+        LV_DIR_LEFT | LV_DIR_RIGHT,
+        LV_DIR_LEFT,
+    };
 
     for (int i = 0; i < UI_PAGE_COUNT; i++) {
-        s_ui.pages[i] = lv_obj_create(s_ui.tileview);
-        lv_obj_set_size(s_ui.pages[i], LV_PCT(100), LV_PCT(100));
-        lv_obj_set_pos(s_ui.pages[i], 0, 0);
-    }
-
-    for (int i = 0; i < UI_PAGE_COUNT; i++) {
+        s_ui.pages[i] = lv_tileview_add_tile(s_ui.tileview, i, 0, page_dirs[i]);
         lv_obj_clear_flag(s_ui.pages[i], LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_bg_opa(s_ui.pages[i], LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(s_ui.pages[i], 0, 0);
@@ -2154,7 +2113,6 @@ void ui_renderer_task(void *arg)
         }
 
         delay_ms = lv_timer_handler();
-        process_pending_swipe();
         if (delay_ms < UI_MIN_DELAY_MS) {
             delay_ms = UI_MIN_DELAY_MS;
         } else if (delay_ms > UI_MAX_DELAY_MS) {

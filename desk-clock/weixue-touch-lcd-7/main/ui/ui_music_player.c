@@ -34,18 +34,6 @@ typedef struct {
 
 static music_ui_t s_music_ui = {0};
 
-static bool point_in_obj(const lv_obj_t *obj, const lv_point_t *point)
-{
-    if (!obj || !point) {
-        return false;
-    }
-
-    lv_area_t area;
-    lv_obj_get_coords((lv_obj_t *)obj, &area);
-    return point->x >= area.x1 && point->x <= area.x2 &&
-           point->y >= area.y1 && point->y <= area.y2;
-}
-
 static void handle_prev_action(void)
 {
     ESP_LOGI(TAG_AUDIO, "Previous button clicked");
@@ -385,30 +373,6 @@ void ui_music_player_refresh_fonts(void)
             lv_label_set_text(s_music_ui.status_label, s_music_ui.status_text);
         }
     }
-}
-
-bool ui_music_player_handle_touch_release(const lv_point_t *point)
-{
-    if (!point) {
-        return false;
-    }
-
-    if (point_in_obj(s_music_ui.btn_prev, point)) {
-        handle_prev_action();
-        return true;
-    }
-
-    if (point_in_obj(s_music_ui.btn_play, point)) {
-        handle_play_action();
-        return true;
-    }
-
-    if (point_in_obj(s_music_ui.btn_next, point)) {
-        handle_next_action();
-        return true;
-    }
-
-    return false;
 }
 
 lv_obj_t *ui_music_player_get_panel(void)
