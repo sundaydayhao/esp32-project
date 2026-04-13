@@ -3,6 +3,7 @@
 #include "system_info.h"
 #include "application.h"
 #include "settings.h"
+#include "sdkconfig.h"
 
 #include <cstring>
 #include <cJSON.h>
@@ -82,7 +83,7 @@ void WebsocketProtocol::CloseAudioChannel(bool send_goodbye) {
 
 bool WebsocketProtocol::OpenAudioChannel() {
     Settings settings("websocket", false);
-    std::string url = settings.GetString("url");
+    std::string url = settings.GetString("url", CONFIG_WEBSOCKET_URL);
     std::string token = settings.GetString("token");
     int version = settings.GetInt("version");
     if (version != 0) {

@@ -33,16 +33,6 @@ float DegreesToRadians(float degrees) {
 lv_coord_t ClampCoord(int value) {
     return static_cast<lv_coord_t>(value);
 }
-
-std::string FormatWeatherTemperature(const char* temperature) {
-    if (temperature == nullptr || temperature[0] == '\0') {
-        return "--";
-    }
-    if (strchr(temperature, 'C') != nullptr || strchr(temperature, 'c') != nullptr) {
-        return temperature;
-    }
-    return std::string(temperature) + " C";
-}
 }
 
 void LcdDisplay::InitializeLcdThemes() {
@@ -389,8 +379,8 @@ void LcdDisplay::CreateHomePanel(LvglTheme* lvgl_theme) {
     lv_obj_set_flex_align(home_panel_, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     home_clock_card_ = lv_obj_create(home_panel_);
-    lv_obj_set_width(home_clock_card_, compact_layout ? LV_PCT(100) : LV_PCT(62));
-    lv_obj_set_flex_grow(home_clock_card_, compact_layout ? 0 : 2);
+    lv_obj_set_width(home_clock_card_, LV_PCT(100));
+    lv_obj_set_flex_grow(home_clock_card_, 1);
     lv_obj_set_height(home_clock_card_, LV_SIZE_CONTENT);
     lv_obj_set_style_radius(home_clock_card_, lvgl_theme->spacing(6), 0);
     lv_obj_set_style_border_width(home_clock_card_, 1, 0);
@@ -466,40 +456,6 @@ void LcdDisplay::CreateHomePanel(LvglTheme* lvgl_theme) {
     home_date_label_ = lv_label_create(home_clock_card_);
     lv_obj_set_style_text_color(home_date_label_, lvgl_theme->text_color(), 0);
     lv_label_set_text(home_date_label_, "等待校时");
-
-    home_weather_card_ = lv_obj_create(home_panel_);
-    lv_obj_set_width(home_weather_card_, compact_layout ? LV_PCT(100) : LV_PCT(34));
-    lv_obj_set_flex_grow(home_weather_card_, 1);
-    lv_obj_set_height(home_weather_card_, LV_SIZE_CONTENT);
-    lv_obj_set_style_radius(home_weather_card_, lvgl_theme->spacing(6), 0);
-    lv_obj_set_style_border_width(home_weather_card_, 1, 0);
-    lv_obj_set_style_border_color(home_weather_card_, lvgl_theme->border_color(), 0);
-    lv_obj_set_style_bg_opa(home_weather_card_, LV_OPA_20, 0);
-    lv_obj_set_style_bg_color(home_weather_card_, lvgl_theme->background_color(), 0);
-    lv_obj_set_style_pad_all(home_weather_card_, lvgl_theme->spacing(5), 0);
-    lv_obj_set_scrollbar_mode(home_weather_card_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_flex_flow(home_weather_card_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(home_weather_card_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(home_weather_card_, lvgl_theme->spacing(2), 0);
-
-    lv_obj_t* weather_title = lv_label_create(home_weather_card_);
-    lv_obj_set_style_text_color(weather_title, lvgl_theme->text_color(), 0);
-    lv_label_set_text(weather_title, "天气");
-
-    home_weather_location_label_ = lv_label_create(home_weather_card_);
-    lv_obj_set_style_text_color(home_weather_location_label_, lvgl_theme->text_color(), 0);
-
-    home_weather_temperature_label_ = lv_label_create(home_weather_card_);
-    lv_obj_set_style_text_color(home_weather_temperature_label_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_text_font(home_weather_temperature_label_, text_font, 0);
-
-    home_weather_condition_label_ = lv_label_create(home_weather_card_);
-    lv_obj_set_width(home_weather_condition_label_, compact_layout ? LV_PCT(100) : LV_PCT(92));
-    lv_obj_set_style_text_align(home_weather_condition_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(home_weather_condition_label_, lvgl_theme->text_color(), 0);
-    lv_label_set_long_mode(home_weather_condition_label_, LV_LABEL_LONG_WRAP);
-
-    RefreshWeatherDisplay();
     UpdateHomeClock();
 }
 
@@ -600,21 +556,6 @@ void LcdDisplay::UpdateHomeClock() {
     lv_line_set_points(home_clock_hour_hand_, home_clock_hour_points_.data(), 2);
     lv_line_set_points(home_clock_minute_hand_, home_clock_minute_points_.data(), 2);
     lv_line_set_points(home_clock_second_hand_, home_clock_second_points_.data(), 2);
-}
-
-void LcdDisplay::RefreshWeatherDisplay() {
-    if (home_weather_location_label_ == nullptr || home_weather_temperature_label_ == nullptr ||
-        home_weather_condition_label_ == nullptr) {
-        return;
-    }
-
-    const char* location = weather_location_.empty() ? "本地" : weather_location_.c_str();
-    const char* condition = weather_condition_.empty() ? "天气获取中" : weather_condition_.c_str();
-    const char* temperature = weather_temperature_.empty() ? "--" : weather_temperature_.c_str();
-
-    lv_label_set_text(home_weather_location_label_, location);
-    lv_label_set_text(home_weather_temperature_label_, temperature);
-    lv_label_set_text(home_weather_condition_label_, condition);
 }
 
 void LcdDisplay::AppendChatBubble(const char* role, const char* content, LvglTheme* lvgl_theme) {
@@ -1402,13 +1343,6 @@ void LcdDisplay::SetChatActive(bool active) {
     UpdateActivePanelVisibility();
 }
 
-void LcdDisplay::SetWeather(const char* condition, const char* temperature, const char* location) {
-    DisplayLockGuard lock(this);
-    weather_condition_ = (condition != nullptr && condition[0] != '\0') ? condition : "天气获取中";
-    weather_temperature_ = FormatWeatherTemperature(temperature);
-    weather_location_ = (location != nullptr && location[0] != '\0') ? location : "本地";
-    RefreshWeatherDisplay();
-}
 #endif
 
 void LcdDisplay::SetEmotion(const char* emotion) {
@@ -1621,10 +1555,6 @@ void LcdDisplay::SetTheme(Theme* theme) {
         lv_obj_set_style_border_color(home_clock_card_, lvgl_theme->border_color(), 0);
         lv_obj_set_style_bg_color(home_clock_card_, lvgl_theme->background_color(), 0);
     }
-    if (home_weather_card_ != nullptr) {
-        lv_obj_set_style_border_color(home_weather_card_, lvgl_theme->border_color(), 0);
-        lv_obj_set_style_bg_color(home_weather_card_, lvgl_theme->background_color(), 0);
-    }
     if (home_clock_face_ != nullptr) {
         lv_obj_set_style_border_color(home_clock_face_, lvgl_theme->text_color(), 0);
         lv_obj_set_style_bg_color(home_clock_face_, lvgl_theme->background_color(), 0);
@@ -1648,15 +1578,6 @@ void LcdDisplay::SetTheme(Theme* theme) {
     }
     if (home_date_label_ != nullptr) {
         lv_obj_set_style_text_color(home_date_label_, lvgl_theme->text_color(), 0);
-    }
-    if (home_weather_location_label_ != nullptr) {
-        lv_obj_set_style_text_color(home_weather_location_label_, lvgl_theme->text_color(), 0);
-    }
-    if (home_weather_temperature_label_ != nullptr) {
-        lv_obj_set_style_text_color(home_weather_temperature_label_, lvgl_theme->text_color(), 0);
-    }
-    if (home_weather_condition_label_ != nullptr) {
-        lv_obj_set_style_text_color(home_weather_condition_label_, lvgl_theme->text_color(), 0);
     }
 
     if (content_ != nullptr) {

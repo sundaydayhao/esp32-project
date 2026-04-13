@@ -53,13 +53,6 @@ void Display::SetChatActive(bool active) {
     ESP_LOGW(TAG, "SetChatActive: %d", active);
 }
 
-void Display::SetWeather(const char* condition, const char* temperature, const char* location) {
-    ESP_LOGW(TAG, "SetWeather: condition=%s temperature=%s location=%s",
-        condition != nullptr ? condition : "",
-        temperature != nullptr ? temperature : "",
-        location != nullptr ? location : "");
-}
-
 void Display::SetTheme(Theme* theme) {
     current_theme_ = theme;
     Settings settings("display", true);

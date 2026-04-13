@@ -2,9 +2,21 @@ menu "Xiaozhi Assistant"
 
 config OTA_URL
     string "Default OTA URL"
-    default "https://api.tenclass.net/xiaozhi/ota/"
+    default "http://192.168.0.110:8002/xiaozhi/ota/"
     help
         The application will access this URL to check for new firmwares and server address.
+
+config WEBSOCKET_URL
+    string "Default WebSocket URL"
+    default "ws://192.168.0.110:8000/xiaozhi/v1/"
+    help
+        Fallback WebSocket server URL used before the backend pushes runtime config.
+
+config VISION_EXPLAIN_URL
+    string "Default Vision Explain URL"
+    default "http://192.168.0.110:8003/mcp/vision/explain"
+    help
+        Fallback vision analysis endpoint used when the backend has not provided capabilities yet.
 
 choice
     prompt "Flash Assets"

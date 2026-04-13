@@ -27,7 +27,7 @@ The stable version of v1 is 1.9.2. You can switch to v1 by running `git checkout
 - Supports two communication protocols ([WebSocket](docs/websocket.md) or MQTT+UDP)
 - Streaming voice interaction based on ASR + LLM + TTS, using Opus audio transport
 - Manual, auto-stop, and realtime conversation modes with configurable AEC behavior
-- OLED / LCD / emote display support with chat UI, notifications, battery and network status, weather, and home clock cards
+- OLED / LCD / emote display support with chat UI, notifications, battery and network status, and home clock cards
 - Emoji and GIF emotion rendering, preview images, and screen snapshot support on supported LVGL devices
 - Light / dark themes and asset-driven customization for fonts, emoji collections, background images, and subtitle visibility
 - Battery monitoring, backlight control, power management, and OTA firmware upgrade
