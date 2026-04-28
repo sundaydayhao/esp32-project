@@ -336,3 +336,37 @@ MIT License - 自由使用、修改和分发
 - [esp32-camera 组件](https://github.com/espressif/esp32-camera)
 - [DFPlayer Mini 数据手册](https://wiki.dfrobot.com/DFPlayer_Mini_SKU_DFR0299)
 - [OV2640 数据手册](https://www.ov.com/ov2640.html)
+
+
+可以从这些地方找，按你这个项目的四类最方便：
+
+1. **Kaggle：Waste Classification Dataset**  
+   类别基本能直接映射：`Hazardous=有害垃圾`、`Recyclable=可回收物`、`Organic=厨余垃圾`、`Non-Recyclable=其他垃圾`。  
+   https://www.kaggle.com/datasets/phenomsg/waste-classification
+
+2. **华为云 ModelArts 垃圾分类示例数据集**  
+   小而直接，包含：一次性快餐盒、易拉罐、干电池、菜叶菜根，对应四类。适合先跑通项目。  
+   下载： https://modelarts-course-garbage.obs.cn-north-4.myhuaweicloud.com/automl-dataset/automl_garbage_dataset.zip  
+   说明来源： https://blog.csdn.net/hjx020/article/details/124692657
+
+3. **GitCode / AtomGit 垃圾分类数据集**  
+   有 4 大类、40 小类，适合做中文垃圾分类。注意有些是 YOLO 标注格式，可能需要整理成分类文件夹。  
+   https://ai.gitcode.com/ai53_19/garbage_datasets/tree/main
+
+4. **TrashNet / Hugging Face**  
+   有 `cardboard, glass, metal, paper, plastic, trash`，更适合补充“可回收物”和“其他垃圾”。不太覆盖厨余、有害。  
+   https://huggingface.co/datasets/garythung/trashnet
+
+5. **TACO Dataset**  
+   真实场景垃圾图片，适合增强模型泛化能力，但需要自己把细分类重新归到四类。  
+   https://github.com/pedropro/TACO
+
+6. **Wikimedia Commons / Pixabay / Pexels 补图**  
+   适合少量补充图片，记得看每张图片许可证。  
+   食物垃圾：https://commons.wikimedia.org/wiki/Category:Food_waste  
+   有害垃圾：https://commons.wikimedia.org/wiki/Category:Hazardous_waste  
+   Pixabay 垃圾回收：https://pixabay.com/photos/search/garbage%20recycling/
+
+建议搜索时不要只搜“四类名称”，而是搜具体物品：  
+`干电池 废灯管 过期药品`、`塑料瓶 易拉罐 纸箱`、`菜叶 果皮 剩饭`、`纸巾 烟蒂 陶瓷碎片`。这样图片质量会高很多。
+
