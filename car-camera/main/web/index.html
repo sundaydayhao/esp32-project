@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32-S3 Smart Car</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f5f0;
+      --panel: #ffffff;
+      --ink: #202124;
+      --muted: #68706a;
+      --line: #d9ded6;
+      --accent: #007c89;
+      --accent-dark: #005d67;
+      --warn: #c7462b;
+      --ok: #2f7d32;
+      --shadow: 0 8px 24px rgba(22, 30, 24, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .app {
+      width: min(1180px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .viewport,
+    .controls {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .viewport {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .topbar {
+      min-height: 56px;
+      padding: 12px 14px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .pill {
+      min-height: 28px;
+      padding: 6px 9px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fafbf8;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+
+    .dot.warn {
+      background: var(--warn);
+    }
+
+    .video-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 360px;
+      background: #111;
+      display: grid;
+      place-items: center;
+    }
+
+    .video {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 360px;
+      object-fit: contain;
+      background: #111;
+    }
+
+    .controls {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .section {
+      display: grid;
+      gap: 10px;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(3, 72px);
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f9faf7;
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    button:active,
+    button.active {
+      transform: translateY(1px);
+      border-color: var(--accent);
+      background: #e6f3f4;
+    }
+
+    .cmd {
+      display: grid;
+      place-items: center;
+      font-size: clamp(24px, 6vw, 34px);
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .cmd.stop {
+      background: var(--warn);
+      border-color: var(--warn);
+      color: #fff;
+      font-size: 28px;
+    }
+
+    .cmd.primary {
+      background: var(--accent);
+      border-color: var(--accent-dark);
+      color: #fff;
+    }
+
+    .spin-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .spin-row button {
+      min-height: 52px;
+      font-size: 26px;
+      font-weight: 750;
+    }
+
+    .speed-row {
+      display: grid;
+      grid-template-columns: 1fr 54px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .speed-value {
+      padding: 8px 0;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .quick {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .quick button {
+      min-height: 42px;
+      font-weight: 700;
+    }
+
+    .telemetry {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .metric {
+      min-height: 48px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fafbf8;
+      display: grid;
+      align-content: center;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .metric span {
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .metric strong {
+      overflow-wrap: anywhere;
+      font-variant-numeric: tabular-nums;
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        grid-template-columns: 1fr;
+        padding: 10px;
+      }
+
+      .video-wrap,
+      .video {
+        min-height: 260px;
+      }
+
+      .controls {
+        min-height: auto;
+      }
+
+      .dpad {
+        grid-template-rows: repeat(3, 64px);
+      }
+    }
+
+    @media (max-width: 430px) {
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .status-row {
+        justify-content: flex-start;
+      }
+
+      .controls {
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="viewport">
+      <div class="topbar">
+        <h1>ESP32-S3 智能小车</h1>
+        <div class="status-row">
+          <span class="pill"><i id="cameraDot" class="dot"></i><span id="cameraState">Camera</span></span>
+          <span class="pill"><i id="blockDot" class="dot"></i><span id="blockState">Clear</span></span>
+        </div>
+      </div>
+      <div class="video-wrap">
+        <img class="video" src="/stream" alt="camera stream">
+      </div>
+    </section>
+
+    <aside class="controls">
+      <div class="section">
+        <div class="label">方向</div>
+        <div class="dpad">
+          <div></div>
+          <button class="cmd primary" data-cmd="forward" title="Forward">▲</button>
+          <div></div>
+          <button class="cmd" data-cmd="left" title="Left">◀</button>
+          <button class="cmd stop" data-cmd="stop" title="Stop">■</button>
+          <button class="cmd" data-cmd="right" title="Right">▶</button>
+          <div></div>
+          <button class="cmd" data-cmd="backward" title="Backward">▼</button>
+          <div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="label">原地旋转</div>
+        <div class="spin-row">
+          <button data-cmd="spin_left" title="Spin left">↺</button>
+          <button data-cmd="spin_right" title="Spin right">↻</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="label">速度</div>
+        <div class="speed-row">
+          <input id="speed" type="range" min="0" max="100" value="60">
+          <div id="speedValue" class="speed-value">60%</div>
+        </div>
+        <div class="quick">
+          <button data-speed="35">35%</button>
+          <button data-speed="60">60%</button>
+          <button data-speed="85">85%</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="label">状态</div>
+        <div class="telemetry">
+          <div class="metric"><span>命令</span><strong id="cmdState">stop</strong></div>
+          <div class="metric"><span>距离</span><strong id="distanceState">--</strong></div>
+          <div class="metric"><span>左轮</span><strong id="leftState">0%</strong></div>
+          <div class="metric"><span>右轮</span><strong id="rightState">0%</strong></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const speed = document.querySelector("#speed");
+    const speedValue = document.querySelector("#speedValue");
+    const commandButtons = [...document.querySelectorAll("[data-cmd]")];
+    const speedButtons = [...document.querySelectorAll("[data-speed]")];
+    const keyMap = new Map([
+      ["ArrowUp", "forward"],
+      ["w", "forward"],
+      ["W", "forward"],
+      ["ArrowDown", "backward"],
+      ["s", "backward"],
+      ["S", "backward"],
+      ["ArrowLeft", "left"],
+      ["a", "left"],
+      ["A", "left"],
+      ["ArrowRight", "right"],
+      ["d", "right"],
+      ["D", "right"],
+      ["q", "spin_left"],
+      ["Q", "spin_left"],
+      ["e", "spin_right"],
+      ["E", "spin_right"],
+      [" ", "stop"]
+    ]);
+
+    let activeCmd = "stop";
+    let holdTimer = 0;
+    let activeButton = null;
+
+    function setSpeedValue(value) {
+      speed.value = String(value);
+      speedValue.textContent = `${value}%`;
+    }
+
+    async function sendControl(cmd) {
+      activeCmd = cmd;
+      const value = speed.value;
+      try {
+        const response = await fetch(`/control?cmd=${encodeURIComponent(cmd)}&speed=${encodeURIComponent(value)}`, {
+          cache: "no-store"
+        });
+        const data = await response.json();
+        renderStatus(data);
+      } catch (error) {
+        document.querySelector("#cmdState").textContent = "offline";
+      }
+    }
+
+    function startHold(cmd, button) {
+      stopHold(false);
+      activeButton = button || null;
+      if (activeButton) activeButton.classList.add("active");
+      sendControl(cmd);
+      if (cmd !== "stop") {
+        holdTimer = window.setInterval(() => sendControl(cmd), 260);
+      }
+    }
+
+    function stopHold(sendStop = true) {
+      if (holdTimer) {
+        window.clearInterval(holdTimer);
+        holdTimer = 0;
+      }
+      if (activeButton) {
+        activeButton.classList.remove("active");
+        activeButton = null;
+      }
+      if (sendStop && activeCmd !== "stop") {
+        sendControl("stop");
+      }
+    }
+
+    function renderStatus(data) {
+      if (!data) return;
+      document.querySelector("#cmdState").textContent = data.cmd || "stop";
+      document.querySelector("#leftState").textContent = `${data.left ?? 0}%`;
+      document.querySelector("#rightState").textContent = `${data.right ?? 0}%`;
+      document.querySelector("#distanceState").textContent =
+        data.distance_cm > 0 ? `${data.distance_cm} cm` : "--";
+
+      const cameraDot = document.querySelector("#cameraDot");
+      const cameraState = document.querySelector("#cameraState");
+      const cameraOk = data.camera !== false;
+      cameraDot.classList.toggle("warn", !cameraOk);
+      cameraState.textContent = cameraOk ? "Camera" : "No Camera";
+
+      const blockDot = document.querySelector("#blockDot");
+      const blockState = document.querySelector("#blockState");
+      blockDot.classList.toggle("warn", !!data.blocked);
+      blockState.textContent = data.blocked ? "Blocked" : "Clear";
+    }
+
+    commandButtons.forEach((button) => {
+      const cmd = button.dataset.cmd;
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        startHold(cmd, button);
+      });
+      button.addEventListener("pointerup", () => {
+        if (cmd === "stop") sendControl("stop");
+        else stopHold(true);
+      });
+      button.addEventListener("pointercancel", () => stopHold(true));
+      button.addEventListener("pointerleave", () => {
+        if (activeButton === button) stopHold(true);
+      });
+    });
+
+    speed.addEventListener("input", () => {
+      speedValue.textContent = `${speed.value}%`;
+      if (activeCmd !== "stop") sendControl(activeCmd);
+    });
+
+    speedButtons.forEach((button) => {
+      button.addEventListener("click", () => setSpeedValue(Number(button.dataset.speed)));
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.repeat) return;
+      const cmd = keyMap.get(event.key);
+      if (!cmd) return;
+      event.preventDefault();
+      startHold(cmd);
+    });
+
+    document.addEventListener("keyup", (event) => {
+      if (!keyMap.has(event.key)) return;
+      event.preventDefault();
+      stopHold(true);
+    });
+
+    window.addEventListener("blur", () => stopHold(true));
+
+    async function pollStatus() {
+      try {
+        const response = await fetch("/status", { cache: "no-store" });
+        renderStatus(await response.json());
+      } catch (error) {
+        document.querySelector("#cmdState").textContent = "offline";
+      }
+    }
+
+    setSpeedValue(Number(speed.value));
+    sendControl("stop");
+    window.setInterval(pollStatus, 1000);
+  </script>
+</body>
+</html>

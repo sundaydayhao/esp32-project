@@ -1,0 +1,231 @@
+menu "Smart Camera Car Configuration"
+
+    menu "Wi-Fi AP"
+        config CAR_WIFI_AP_SSID
+            string "AP SSID"
+            default "ESP32S3-Car"
+
+        config CAR_WIFI_AP_PASSWORD
+            string "AP password"
+            default "12345678"
+            help
+                WPA/WPA2 password. Use at least 8 characters, or leave empty for an open AP.
+
+        config CAR_WIFI_AP_CHANNEL
+            int "AP channel"
+            default 6
+            range 1 13
+
+        config CAR_WIFI_MAX_STA
+            int "Max connected stations"
+            default 4
+            range 1 8
+    endmenu
+
+    menu "Camera"
+        config CAR_CAM_PIN_PWDN
+            int "PWDN GPIO (-1 disables)"
+            default -1
+            range -1 48
+
+        config CAR_CAM_PIN_RESET
+            int "RESET GPIO (-1 disables)"
+            default -1
+            range -1 48
+
+        config CAR_CAM_PIN_XCLK
+            int "XCLK GPIO"
+            default 15
+            range 0 48
+
+        config CAR_CAM_PIN_SIOD
+            int "SIOD/SDA GPIO"
+            default 4
+            range 0 48
+
+        config CAR_CAM_PIN_SIOC
+            int "SIOC/SCL GPIO"
+            default 5
+            range 0 48
+
+        config CAR_CAM_PIN_D7
+            int "D7/Y9 GPIO"
+            default 16
+            range 0 48
+
+        config CAR_CAM_PIN_D6
+            int "D6/Y8 GPIO"
+            default 17
+            range 0 48
+
+        config CAR_CAM_PIN_D5
+            int "D5/Y7 GPIO"
+            default 18
+            range 0 48
+
+        config CAR_CAM_PIN_D4
+            int "D4/Y6 GPIO"
+            default 12
+            range 0 48
+
+        config CAR_CAM_PIN_D3
+            int "D3/Y5 GPIO"
+            default 10
+            range 0 48
+
+        config CAR_CAM_PIN_D2
+            int "D2/Y4 GPIO"
+            default 8
+            range 0 48
+
+        config CAR_CAM_PIN_D1
+            int "D1/Y3 GPIO"
+            default 9
+            range 0 48
+
+        config CAR_CAM_PIN_D0
+            int "D0/Y2 GPIO"
+            default 11
+            range 0 48
+
+        config CAR_CAM_PIN_VSYNC
+            int "VSYNC GPIO"
+            default 6
+            range 0 48
+
+        config CAR_CAM_PIN_HREF
+            int "HREF GPIO"
+            default 7
+            range 0 48
+
+        config CAR_CAM_PIN_PCLK
+            int "PCLK GPIO"
+            default 13
+            range 0 48
+
+        config CAR_CAM_XCLK_FREQ_HZ
+            int "XCLK frequency"
+            default 20000000
+            range 10000000 24000000
+
+        choice CAR_CAMERA_FRAME_SIZE
+            prompt "Default stream frame size"
+            default CAR_CAMERA_FRAME_SIZE_QVGA
+
+            config CAR_CAMERA_FRAME_SIZE_QQVGA
+                bool "QQVGA 160x120"
+
+            config CAR_CAMERA_FRAME_SIZE_QVGA
+                bool "QVGA 320x240"
+
+            config CAR_CAMERA_FRAME_SIZE_VGA
+                bool "VGA 640x480"
+        endchoice
+
+        config CAR_CAMERA_JPEG_QUALITY
+            int "JPEG quality, lower is better"
+            default 12
+            range 5 35
+
+        config CAR_CAMERA_FB_COUNT
+            int "Frame buffer count"
+            default 2
+            range 1 3
+    endmenu
+
+    menu "Motor Driver"
+        config CAR_MOTOR_LEFT_PWM_GPIO
+            int "Left motor PWM GPIO"
+            default 14
+            range 0 48
+
+        config CAR_MOTOR_LEFT_IN1_GPIO
+            int "Left motor IN1 GPIO"
+            default 1
+            range 0 48
+
+        config CAR_MOTOR_LEFT_IN2_GPIO
+            int "Left motor IN2 GPIO"
+            default 2
+            range 0 48
+
+        config CAR_MOTOR_RIGHT_PWM_GPIO
+            int "Right motor PWM GPIO"
+            default 21
+            range 0 48
+
+        config CAR_MOTOR_RIGHT_IN1_GPIO
+            int "Right motor IN1 GPIO"
+            default 39
+            range 0 48
+
+        config CAR_MOTOR_RIGHT_IN2_GPIO
+            int "Right motor IN2 GPIO"
+            default 40
+            range 0 48
+
+        config CAR_MOTOR_STBY_GPIO
+            int "Motor standby GPIO (-1 disables)"
+            default 41
+            range -1 48
+
+        config CAR_MOTOR_PWM_FREQ_HZ
+            int "Motor PWM frequency"
+            default 1000
+            range 100 20000
+
+        config CAR_MOTOR_DEFAULT_SPEED
+            int "Default speed percent"
+            default 60
+            range 0 100
+
+        config CAR_MOTOR_FAILSAFE_MS
+            int "Motor failsafe timeout ms"
+            default 900
+            range 200 5000
+
+        config CAR_MOTOR_INVERT_LEFT
+            bool "Invert left motor direction"
+            default n
+
+        config CAR_MOTOR_INVERT_RIGHT
+            bool "Invert right motor direction"
+            default n
+    endmenu
+
+    menu "Ultrasonic Obstacle Avoidance"
+        config CAR_ENABLE_ULTRASONIC
+            bool "Enable HC-SR04"
+            default y
+
+        config CAR_ULTRASONIC_TRIG_GPIO
+            int "TRIG GPIO"
+            default 42
+            range 0 48
+            depends on CAR_ENABLE_ULTRASONIC
+
+        config CAR_ULTRASONIC_ECHO_GPIO
+            int "ECHO GPIO"
+            default 47
+            range 0 48
+            depends on CAR_ENABLE_ULTRASONIC
+
+        config CAR_OBSTACLE_STOP_CM
+            int "Stop distance cm"
+            default 20
+            range 5 200
+            depends on CAR_ENABLE_ULTRASONIC
+
+        config CAR_ULTRASONIC_PERIOD_MS
+            int "Measure period ms"
+            default 120
+            range 60 1000
+            depends on CAR_ENABLE_ULTRASONIC
+    endmenu
+
+    config CAR_STATUS_LED_GPIO
+        int "Status LED GPIO (-1 disables)"
+        default 48
+        range -1 48
+
+endmenu

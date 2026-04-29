@@ -1,0 +1,21 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "wifi_ap.c"
+        "camera_app.c"
+        "motor_control.c"
+        "ultrasonic.c"
+        "web_server.c"
+    INCLUDE_DIRS "."
+    EMBED_TXTFILES
+        "web/index.html"
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_http_server
+        esp_timer
+        esp32-camera
+        driver
+        freertos
+        log
+)
