@@ -1,0 +1,158 @@
+menu "VC0706 Serial JPEG Camera Test"
+
+    menu "Camera UART"
+
+        config VC0706_UART_NUM
+            int "UART port number"
+            default 1
+            range 0 2
+            help
+                ESP-IDF UART port used to talk to the VC0706 module.
+
+        config VC0706_UART_TX_GPIO
+            int "ESP32 TX GPIO"
+            default 3
+            range -1 48
+            help
+                Connect this ESP32 GPIO to camera RX. Arduino SoftwareSerial(2, 3)
+                maps to RX=2 and TX=3.
+
+        config VC0706_UART_RX_GPIO
+            int "ESP32 RX GPIO"
+            default 2
+            range -1 48
+            help
+                Connect this ESP32 GPIO to camera TX.
+
+        config VC0706_UART_BAUD_RATE
+            int "UART baud rate"
+            default 38400
+            range 1200 115200
+            help
+                Most VC0706 modules default to 38400. Some clones are shipped at 9600.
+
+        config VC0706_UART_RX_BUFFER_SIZE
+            int "UART RX buffer size"
+            default 2048
+            range 512 8192
+
+        config VC0706_COMMAND_TIMEOUT_MS
+            int "Command response timeout (ms)"
+            default 1200
+            range 50 5000
+
+        config VC0706_IMAGE_READ_TIMEOUT_MS
+            int "Image data read timeout (ms)"
+            default 1500
+            range 100 10000
+
+        config VC0706_POWER_UP_DELAY_MS
+            int "Camera power-up delay before probe (ms)"
+            default 1500
+            range 0 5000
+            help
+                Some VC0706 modules need more than one second after power is
+                applied before they answer UART commands.
+
+        config VC0706_INIT_RETRIES
+            int "Probe retries per baud rate"
+            default 3
+            range 1 10
+
+        config VC0706_AUTO_BAUD
+            bool "Scan common VC0706 baud rates during init"
+            default y
+            help
+                Try the configured baud rate first, then common values such as
+                38400, 9600, 19200, 57600 and 115200.
+
+        config VC0706_READ_DELAY_MS
+            int "READ_FBUF delay parameter (ms)"
+            default 10
+            range 0 65535
+            help
+                Delay value sent inside READ_FBUF. Keep the default unless the
+                module drops bytes at higher UART speeds.
+
+    endmenu
+
+    choice VC0706_IMAGE_SIZE
+        prompt "Capture image size"
+        default VC0706_IMAGE_SIZE_640X480
+
+        config VC0706_IMAGE_SIZE_640X480
+            bool "640x480"
+
+        config VC0706_IMAGE_SIZE_320X240
+            bool "320x240"
+
+        config VC0706_IMAGE_SIZE_160X120
+            bool "160x120"
+    endchoice
+
+    config VC0706_READ_CHUNK_SIZE
+        int "JPEG read chunk size"
+        default 32
+        range 4 255
+        help
+            Number of bytes read per READ_FBUF command. 32 or 64 is usually the
+            safest range for VC0706 modules.
+
+    config VC0706_BUTTON_GPIO
+        int "Capture button GPIO"
+        default 7
+        range -1 48
+        help
+            Active-low button with internal pull-up. Set -1 to capture once on boot.
+
+    menu "SD Card"
+
+        config VC0706_SAVE_TO_SD
+            bool "Save JPEG files to SD card"
+            default y
+
+        choice VC0706_SD_SPI_HOST
+            prompt "SD SPI host"
+            default VC0706_SD_SPI3_HOST
+            depends on VC0706_SAVE_TO_SD
+
+            config VC0706_SD_SPI2_HOST
+                bool "SPI2_HOST"
+
+            config VC0706_SD_SPI3_HOST
+                bool "SPI3_HOST"
+        endchoice
+
+        config VC0706_SD_MOSI_GPIO
+            int "SD MOSI GPIO"
+            default 11
+            range -1 48
+            depends on VC0706_SAVE_TO_SD
+
+        config VC0706_SD_MISO_GPIO
+            int "SD MISO GPIO"
+            default 13
+            range -1 48
+            depends on VC0706_SAVE_TO_SD
+
+        config VC0706_SD_CLK_GPIO
+            int "SD CLK GPIO"
+            default 12
+            range -1 48
+            depends on VC0706_SAVE_TO_SD
+
+        config VC0706_SD_CS_GPIO
+            int "SD CS GPIO"
+            default 4
+            range 0 48
+            depends on VC0706_SAVE_TO_SD
+
+        config VC0706_SD_SPI_FREQ_KHZ
+            int "SD SPI frequency (kHz)"
+            default 20000
+            range 400 40000
+            depends on VC0706_SAVE_TO_SD
+
+    endmenu
+
+endmenu
