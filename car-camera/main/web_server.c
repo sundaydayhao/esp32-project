@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "audio_intercom.h"
 #include "camera_app.h"
 #include "motor_control.h"
 #include "ultrasonic.h"
@@ -115,6 +116,94 @@ static uint8_t parse_speed(const char *value)
     return (uint8_t)speed;
 }
 
+static int hex_value(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+static void url_decode_in_place(char *value)
+{
+    char *src = value;
+    char *dst = value;
+
+    while (*src != '\0') {
+        if (*src == '%' && hex_value(src[1]) >= 0 && hex_value(src[2]) >= 0) {
+            *dst++ = (char)((hex_value(src[1]) << 4) | hex_value(src[2]));
+            src += 3;
+        } else if (*src == '+') {
+            *dst++ = ' ';
+            src++;
+        } else {
+            *dst++ = *src++;
+        }
+    }
+    *dst = '\0';
+}
+
+static bool text_has_any(const char *text, const char *a, const char *b,
+                         const char *c, const char *d)
+{
+    return (a != NULL && strstr(text, a) != NULL) ||
+           (b != NULL && strstr(text, b) != NULL) ||
+           (c != NULL && strstr(text, c) != NULL) ||
+           (d != NULL && strstr(text, d) != NULL);
+}
+
+static car_motion_t motion_from_voice_text(const char *text, bool *recognized)
+{
+    if (recognized != NULL) {
+        *recognized = true;
+    }
+
+    if (text == NULL || text[0] == '\0') {
+        if (recognized != NULL) {
+            *recognized = false;
+        }
+        return CAR_MOTION_STOP;
+    }
+
+    if (text_has_any(text, "停止", "停车", "刹车", "stop") ||
+        text_has_any(text, "停下", "别动", "不要动", NULL)) {
+        return CAR_MOTION_STOP;
+    }
+    if (text_has_any(text, "原地左", "左旋", "spin left", "rotate left")) {
+        return CAR_MOTION_SPIN_LEFT;
+    }
+    if (text_has_any(text, "原地右", "右旋", "spin right", "rotate right")) {
+        return CAR_MOTION_SPIN_RIGHT;
+    }
+    if (text_has_any(text, "左转", "向左", "往左", "turn left") ||
+        text_has_any(text, "左边", "left", NULL, NULL)) {
+        return CAR_MOTION_LEFT;
+    }
+    if (text_has_any(text, "右转", "向右", "往右", "turn right") ||
+        text_has_any(text, "右边", "right", NULL, NULL)) {
+        return CAR_MOTION_RIGHT;
+    }
+    if (text_has_any(text, "后退", "倒车", "向后", "backward") ||
+        text_has_any(text, "back", NULL, NULL, NULL)) {
+        return CAR_MOTION_BACKWARD;
+    }
+    if (text_has_any(text, "前进", "向前", "往前", "forward") ||
+        text_has_any(text, "go ahead", "go", NULL, NULL)) {
+        return CAR_MOTION_FORWARD;
+    }
+
+    if (recognized != NULL) {
+        *recognized = false;
+    }
+    return CAR_MOTION_STOP;
+}
+
 static esp_err_t control_handler(httpd_req_t *req)
 {
     char query[128] = {0};
@@ -151,6 +240,107 @@ static esp_err_t control_handler(httpd_req_t *req)
     return httpd_resp_send(req, body, len);
 }
 
+static esp_err_t voice_handler(httpd_req_t *req)
+{
+    char query[256] = {0};
+    char text[128] = {0};
+    char speed_value[8] = {0};
+
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        httpd_query_key_value(query, "text", text, sizeof(text));
+        httpd_query_key_value(query, "speed", speed_value, sizeof(speed_value));
+    }
+    url_decode_in_place(text);
+
+    bool recognized = false;
+    car_motion_t motion = motion_from_voice_text(text, &recognized);
+    uint8_t speed = parse_speed(speed_value);
+    esp_err_t drive_ret = ESP_ERR_NOT_FOUND;
+
+    if (recognized) {
+        drive_ret = motor_control_drive(motion, speed);
+    }
+
+    motor_status_t status = {0};
+    motor_control_get_status(&status);
+
+    char body[320];
+    int len = snprintf(body, sizeof(body),
+                       "{\"ok\":%s,\"recognized\":%s,\"cmd\":\"%s\","
+                       "\"speed\":%u,\"left\":%d,\"right\":%d,"
+                       "\"blocked\":%s,\"distance_cm\":%d,\"camera\":%s}\n",
+                       (recognized && drive_ret == ESP_OK) ? "true" : "false",
+                       recognized ? "true" : "false",
+                       recognized ? car_motion_to_string(motion) : car_motion_to_string(status.motion),
+                       status.speed,
+                       status.left_percent,
+                       status.right_percent,
+                       status.obstacle_blocked ? "true" : "false",
+                       ultrasonic_get_distance_cm(),
+                       camera_app_is_ready() ? "true" : "false");
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_send(req, body, len);
+}
+
+#if CONFIG_HTTPD_WS_SUPPORT && CONFIG_CAR_ENABLE_INTERCOM
+static esp_err_t audio_ws_handler(httpd_req_t *req)
+{
+    int fd = httpd_req_to_sockfd(req);
+
+    if (req->method == HTTP_GET) {
+        esp_err_t ret = audio_intercom_set_ws_client(req->handle, fd);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "audio websocket rejected: %s", esp_err_to_name(ret));
+        }
+        return ret;
+    }
+
+    httpd_ws_frame_t frame = {0};
+    esp_err_t ret = httpd_ws_recv_frame(req, &frame, 0);
+    if (ret != ESP_OK) {
+        audio_intercom_clear_ws_client(fd);
+        ESP_LOGW(TAG, "audio ws frame header failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    if (frame.len > CONFIG_CAR_AUDIO_MAX_INCOMING_BYTES) {
+        audio_intercom_clear_ws_client(fd);
+        ESP_LOGW(TAG, "audio ws frame too large: %u", (unsigned int)frame.len);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    uint8_t *payload = NULL;
+    if (frame.len > 0) {
+        payload = malloc(frame.len);
+        if (payload == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+        frame.payload = payload;
+        ret = httpd_ws_recv_frame(req, &frame, frame.len);
+        if (ret != ESP_OK) {
+            free(payload);
+            audio_intercom_clear_ws_client(fd);
+            ESP_LOGW(TAG, "audio ws payload failed: %s", esp_err_to_name(ret));
+            return ret;
+        }
+    }
+
+    if (frame.type == HTTPD_WS_TYPE_BINARY && frame.len > 0) {
+        ret = audio_intercom_play_pcm(frame.payload, frame.len);
+        if (ret == ESP_ERR_TIMEOUT) {
+            ret = ESP_OK;
+        }
+    } else if (frame.type == HTTPD_WS_TYPE_CLOSE) {
+        audio_intercom_clear_ws_client(fd);
+    }
+
+    free(payload);
+    return ret == ESP_ERR_NOT_SUPPORTED ? ESP_OK : ret;
+}
+#endif
+
 static esp_err_t status_handler(httpd_req_t *req)
 {
     motor_status_t status = {0};
@@ -185,7 +375,7 @@ esp_err_t web_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
     config.stack_size = 8192;
-    config.max_uri_handlers = 8;
+    config.max_uri_handlers = 9;
     config.lru_purge_enable = true;
     config.recv_wait_timeout = 5;
     config.send_wait_timeout = 5;
@@ -221,12 +411,29 @@ esp_err_t web_server_start(void)
         .method = HTTP_GET,
         .handler = status_handler,
     };
+    const httpd_uri_t uri_voice = {
+        .uri = "/voice",
+        .method = HTTP_GET,
+        .handler = voice_handler,
+    };
+#if CONFIG_HTTPD_WS_SUPPORT && CONFIG_CAR_ENABLE_INTERCOM
+    const httpd_uri_t uri_audio = {
+        .uri = "/audio",
+        .method = HTTP_GET,
+        .handler = audio_ws_handler,
+        .is_websocket = true,
+    };
+#endif
 
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_server, &uri_index));
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_server, &uri_stream));
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_server, &uri_snapshot));
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_server, &uri_control));
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_server, &uri_status));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(s_server, &uri_voice));
+#if CONFIG_HTTPD_WS_SUPPORT && CONFIG_CAR_ENABLE_INTERCOM
+    ESP_ERROR_CHECK(httpd_register_uri_handler(s_server, &uri_audio));
+#endif
 
     ESP_LOGI(TAG, "web server ready");
     return ESP_OK;

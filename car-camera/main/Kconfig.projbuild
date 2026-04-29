@@ -223,6 +223,132 @@ menu "Smart Camera Car Configuration"
             depends on CAR_ENABLE_ULTRASONIC
     endmenu
 
+    menu "Audio Intercom"
+        config CAR_ENABLE_INTERCOM
+            bool "Enable phone/car audio intercom"
+            default y
+            help
+                Adds a /audio WebSocket for 16 kHz mono PCM audio. The car uploads
+                microphone audio after a simple noise gate, and plays binary PCM
+                frames received from the phone on the speaker.
+
+        config CAR_AUDIO_SAMPLE_RATE_HZ
+            int "Audio sample rate"
+            default 16000
+            range 8000 48000
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_FRAME_MS
+            int "Audio frame size ms"
+            default 20
+            range 10 100
+            depends on CAR_ENABLE_INTERCOM
+
+        choice CAR_AUDIO_MIC_BITS
+            prompt "I2S microphone sample width"
+            default CAR_AUDIO_MIC_32BIT
+            depends on CAR_ENABLE_INTERCOM
+
+            config CAR_AUDIO_MIC_16BIT
+                bool "16-bit PCM microphone"
+
+            config CAR_AUDIO_MIC_32BIT
+                bool "32-bit I2S microphone, e.g. INMP441"
+        endchoice
+
+        config CAR_AUDIO_MIC_SHIFT_BITS
+            int "32-bit microphone right shift to PCM16"
+            default 16
+            range 8 24
+            depends on CAR_ENABLE_INTERCOM && CAR_AUDIO_MIC_32BIT
+            help
+                INMP441-style I2S microphones usually send valid audio left aligned
+                in a 32-bit slot. Shift by 16 to convert to signed PCM16.
+
+        config CAR_AUDIO_MIC_RIGHT_SLOT
+            bool "Use right I2S microphone slot"
+            default n
+            depends on CAR_ENABLE_INTERCOM
+            help
+                INMP441 L/R tied to GND normally uses the left slot. Enable this if
+                the microphone L/R pin is tied high.
+
+        config CAR_AUDIO_MIC_BCLK_GPIO
+            int "Microphone BCLK/SCK GPIO"
+            default 35
+            range 0 48
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_MIC_WS_GPIO
+            int "Microphone WS/LRCL GPIO"
+            default 36
+            range 0 48
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_MIC_DIN_GPIO
+            int "Microphone SD/DOUT to ESP32 DIN GPIO"
+            default 37
+            range 0 48
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_SPK_BCLK_GPIO
+            int "Speaker amp BCLK GPIO"
+            default 38
+            range 0 48
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_SPK_WS_GPIO
+            int "Speaker amp LRC/WS GPIO"
+            default 45
+            range 0 48
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_SPK_DOUT_GPIO
+            int "Speaker amp DIN/DOUT GPIO"
+            default 46
+            range 0 48
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_NOISE_GATE_THRESHOLD
+            int "Car-side noise gate threshold"
+            default 700
+            range 0 32767
+            depends on CAR_ENABLE_INTERCOM
+            help
+                Mean absolute PCM16 level. Audio below this level is treated as
+                background noise and is not uploaded to the phone.
+
+        config CAR_AUDIO_NOISE_HANGOVER_MS
+            int "Noise gate hangover ms"
+            default 260
+            range 0 2000
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_WS_MAX_PENDING
+            int "Max pending phone audio frames"
+            default 4
+            range 1 16
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_MAX_INCOMING_BYTES
+            int "Max phone-to-car PCM frame bytes"
+            default 4096
+            range 256 8192
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_PLAY_QUEUE_DEPTH
+            int "Speaker playback queue depth"
+            default 8
+            range 1 32
+            depends on CAR_ENABLE_INTERCOM
+
+        config CAR_AUDIO_TASK_STACK_SIZE
+            int "Audio task stack size"
+            default 4096
+            range 3072 8192
+            depends on CAR_ENABLE_INTERCOM
+    endmenu
+
     config CAR_STATUS_LED_GPIO
         int "Status LED GPIO (-1 disables)"
         default 48

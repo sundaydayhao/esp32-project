@@ -5,6 +5,7 @@ idf_component_register(
         "camera_app.c"
         "motor_control.c"
         "ultrasonic.c"
+        "audio_intercom.c"
         "web_server.c"
     INCLUDE_DIRS "."
     EMBED_TXTFILES

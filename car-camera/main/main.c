@@ -1,4 +1,5 @@
 #include "camera_app.h"
+#include "audio_intercom.h"
 #include "motor_control.h"
 #include "ultrasonic.h"
 #include "web_server.h"
@@ -58,6 +59,10 @@ void app_main(void)
 
     ESP_ERROR_CHECK(motor_control_init());
     ESP_ERROR_CHECK(ultrasonic_init());
+    esp_err_t audio_ret = audio_intercom_init();
+    if (audio_ret != ESP_OK) {
+        ESP_LOGE(TAG, "audio intercom unavailable: %s", esp_err_to_name(audio_ret));
+    }
     ESP_ERROR_CHECK(wifi_ap_start());
 
     esp_err_t cam_ret = camera_app_init();
