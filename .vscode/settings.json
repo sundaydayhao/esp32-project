@@ -1,4 +1,5 @@
 {
     "idf.currentSetup": "D:/Espressif/frameworks/esp-idf-v5.5.3/",
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json"
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "cmake.sourceDirectory": "/home/hao/projects/esp32-project/ai-english-trainer"
 }
